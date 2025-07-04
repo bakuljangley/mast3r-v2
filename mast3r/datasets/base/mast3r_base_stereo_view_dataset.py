@@ -181,10 +181,10 @@ class MASt3RBaseStereoViewDataset(BaseStereoViewDataset):
 
     def __getitem__(self, idx):
         if isinstance(idx, tuple):
-            # the idx is specifying the aspect-ratio
+            # if the idx is specifying the aspect-ratio, it would be a tuple
             idx, ar_idx = idx
         else:
-            assert len(self._resolutions) == 1
+            assert len(self._resolutions) == 1 #this would also mean that the resolution is fixed
             ar_idx = 0
 
         # set-up the rng
@@ -196,9 +196,10 @@ class MASt3RBaseStereoViewDataset(BaseStereoViewDataset):
 
         # over-loaded code
         resolution = self._resolutions[ar_idx]  # DO NOT CHANGE THIS (compatible with BatchedRandomSampler)
-        views = self._get_views(idx, resolution, self._rng)
+        views = self._get_views(idx, resolution, self._rng) ## subclassimplementation: this is the method to be implemented by subclasses
         assert len(views) == self.num_views
 
+        #sanity checks that the loaded views are as expected
         for v, view in enumerate(views):
             assert 'pts3d' not in view, f"pts3d should not be there, they will be computed afterwards based on intrinsics+depthmap for view {view_name(view)}"
             view['idx'] = (idx, ar_idx, v)
