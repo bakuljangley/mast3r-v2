@@ -26,10 +26,12 @@ python my_scripts/mining.py \
   --dataset /datasets/vbr_slam/spagna/spagna_train0_kitti \
   --gt /datasets/vbr_slam/spagna/spagna_train0/spagna_train0_gt.txt \
   --calib /datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml \
-  --anchor_start 40000 --anchor_stop 42000 --anchor_step 50 \
-  --query_start 4000 --query_stop 6000 --query_step 50 \
-  --output spagna_matches_inliers_fm.csv \
-  --top_n 3
+  --sequence_pairs "0:3,10;4:10,11,3,5,19,12;20:2,21;7:14;13:15" \
+  --anchor_step 10 \
+  --query_step 50 \
+  --output results/spagna_matches_inliers_fm.csv \
+  --top_n 3 \
+  --temp_file results/spagna_processed_pairs.txt
 ```
 
 - Results include the number of matches and inliers for each pair, saved to the specified output file.
@@ -73,10 +75,24 @@ python my_scripts/evaluate.py \
   --dataset /datasets/vbr_slam/spagna/spagna_train0_kitti \
   --gt /datasets/vbr_slam/spagna/spagna_train0/spagna_train0_gt.txt \
   --calib /datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml \
-  --pairs_csv results2/spagna_matches_inliers_fm_top3.csv \
-  --output_prefix results2/spagna \
-  --temp_file results2/spagna_processed_pairs.txt
+  --pairs_csv results/spagna_matches_inliers_fm_top3_anchors_per_query_per_anchorseq.csv \
+  --output_prefix results_full/spagna \
+  --temp_file results_full/spagna_processed_pairs.txt
 ```
+
+
+```bash
+python my_scripts/evaluate_v2.py \
+  --dataset /datasets/vbr_slam/spagna/spagna_train0_kitti \
+  --gt /datasets/vbr_slam/spagna/spagna_train0/spagna_train0_gt.txt \
+  --calib /datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml \
+  --pairs_csv mined_step50/spagna_matches_inliers_fm_top3_anchors_per_query_per_anchorseq.csv \
+  --output_prefix results_step50/spagna \
+  --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
+  --min_inliers 200 \
+  --temp_file results_step50/spagna_processed_pairs.txt
+```
+
 
 **Arguments:**
 - `--dataset`: Path to the dataset in KITTI format.

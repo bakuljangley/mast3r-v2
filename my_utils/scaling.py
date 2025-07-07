@@ -41,62 +41,71 @@ def compute_scaled_points(method, master_pts, lidar_pts):
     if len(master_pts) < 1 or len(lidar_pts) < 1 or master_pts.shape != lidar_pts.shape:
         return None, None
 
-    if method in ['l1_translation', 'v1']:
-        t_m = np.mean(master_pts, axis=0)
-        t_l = np.mean(lidar_pts, axis=0)
-        norm_m = np.linalg.norm(t_m, ord=1)
-        norm_l = np.linalg.norm(t_l, ord=1)
-        if norm_m < 1e-6:
-            return None, None
-        scale = norm_l / norm_m
-        scaled_pts = master_pts * scale
+    try:
+        if method in ['l1_translation', 'v1']:
+            t_m = np.mean(master_pts, axis=0)
+            t_l = np.mean(lidar_pts, axis=0)
+            norm_m = np.linalg.norm(t_m, ord=1)
+            norm_l = np.linalg.norm(t_l, ord=1)
+            if norm_m < 1e-6:
+                return None, None
+            scale = norm_l / norm_m
+            scaled_pts = master_pts * scale
 
-    elif method in ['alignment', 'v2']:
-        numerator = np.sum(master_pts * lidar_pts)
-        denominator = np.sum(master_pts ** 2)
-        if denominator < 1e-6:
-            return None, None
-        scale = numerator / denominator
-        scaled_pts = master_pts * scale
+        elif method in ['alignment', 'v2']:
+            numerator = np.sum(master_pts * lidar_pts)
+            denominator = np.sum(master_pts ** 2)
+            if denominator < 1e-6:
+                return None, None
+            scale = numerator / denominator
+            scaled_pts = master_pts * scale
 
-    elif method in ['l1_centroid', 'v3']:
-        norm_m = np.linalg.norm(master_pts, ord=2, axis=0)
-        norm_l = np.linalg.norm(lidar_pts, ord=2, axis=0)
-        c_m = np.mean(norm_m)
-        c_l = np.mean(norm_l)
-        if c_m < 1e-6:
-            return None, None
-        scale = c_l / c_m
-        scaled_pts = master_pts * scale
+        elif method in ['l1_centroid', 'v3']:
+            norm_m = np.linalg.norm(master_pts, ord=2, axis=0)
+            norm_l = np.linalg.norm(lidar_pts, ord=2, axis=0)
+            c_m = np.mean(norm_m)
+            c_l = np.mean(norm_l)
+            if c_m < 1e-6:
+                return None, None
+            scale = c_l / c_m
+            scaled_pts = master_pts * scale
 
-    elif method in ['l1_axis', 'v4']:
-        c_m = np.mean(master_pts, axis=0)
-        c_l = np.mean(lidar_pts, axis=0)
-        if np.any(np.abs(c_m) < 1e-6):
-            return None, None
-        scale = np.abs(c_l) / np.abs(c_m)
-        scaled_pts = master_pts * scale
+        elif method in ['l1_axis', 'v4']:
+            c_m = np.mean(master_pts, axis=0)
+            c_l = np.mean(lidar_pts, axis=0)
+            if np.any(np.abs(c_m) < 1e-6):
+                return None, None
+            scale = np.abs(c_l) / np.abs(c_m)
+            scaled_pts = master_pts * scale
 
-    elif method in ['icp', 'umeyama']:
-        # Similarity alignment: s, R, t such that s*R*master_pts + t ≈ lidar_pts
-        try:
+        elif method in ['icp', 'umeyama']:
             scale, R, t = compute_umeyama_similarity(master_pts, lidar_pts)
-            scaled_pts = scale* master_pts #(scale * (R @ master_pts.T).T) + t
-            return scaled_pts, (scale, R, t)
-        except Exception as e:
-            print(f"ICP/Umeyama alignment failed: {e}")
-            return None, None
+            scaled_pts = scale * master_pts
+            return scaled_pts, scale
 
-    else:
-        raise ValueError(f"Unknown scaling method: {method}")
+        else:
+            raise ValueError(f"Unknown scaling method: {method}")
 
-    return scaled_pts, scale
+        return scaled_pts, scale
+    
+    except Exception as e:
+        print(f"Scaling failed for method {method}: {e}")
+        return None, None
 
 def scale_pnp(method, master_pts, lidar_pts, image_pts2d, K):
     """
     Apply scaling and solve PnP, returning SE(3) transformation or None.
     """
-    scaled_pts, _ = compute_scaled_points(method, master_pts, lidar_pts)
+    scaled_pts, scale = compute_scaled_points(method, master_pts, lidar_pts)
     if scaled_pts is None:
-        return None
-    return solve_pnp(scaled_pts, image_pts2d, K)
+        # Return nan arrays instead of None for consistent handling
+        return None, np.array([np.nan]), None
+
+    # Ensure scale is handled consistently
+    if isinstance(scale, (list, np.ndarray)):  # For v4 and icp
+        scale_values = np.array(scale)
+    else:  # For v1, v2, v3 (scalar scale)
+        scale_values = np.array([scale]) if scale is not None else np.array([np.nan])
+
+    T = solve_pnp(scaled_pts, image_pts2d, K)
+    return scaled_pts, scale_values, T

@@ -30,6 +30,13 @@ def parse_args():
     parser.add_argument('--temp_file', type=str, required=True, help='File to log pairs that have already been processed')
     return parser.parse_args()
 
+def ensure_dir_exists(filepath):
+    """
+    Ensure the directory for the given filepath exists.
+    """
+    dirpath = os.path.dirname(filepath)
+    if dirpath and not os.path.exists(dirpath):
+        os.makedirs(dirpath)
 
 def compute_statistics(pose, anchor_pose, mast3r_pts=None, lidar_pts=None):
     """
@@ -55,19 +62,24 @@ def compute_statistics(pose, anchor_pose, mast3r_pts=None, lidar_pts=None):
     rot_error = quaternion_rotational_error(np.array(pose[3:]), np.array(anchor_pose[3:]))
     
     # Compute pointmap error if 3D points are provided
-    pointmap_error = np.linalg.norm(mast3r_pts - lidar_pts) if mast3r_pts is not None and lidar_pts is not None else None
+    if mast3r_pts is not None and lidar_pts is not None and len(mast3r_pts) == len(lidar_pts):
+        pointmap_error = np.mean(np.linalg.norm(mast3r_pts - lidar_pts, axis=1))
+    else:
+        pointmap_error = None
     
     return pos_error, x_error, y_error, z_error, rot_error, pointmap_error
 
-def save_estimation_and_statistics(output_file, query_idx, anchor_idx, pose, statistics, fmt="%.6f"):
+
+def save_estimation_and_statistics(output_file, anchor_seq, query_seq, query_idx, anchor_idx, pose, statistics, fmt="%.6f"):
     """
     Append a single pose and statistics row to the output files.
     """
+    ensure_dir_exists(output_file)
     pose_row = [query_idx, anchor_idx] + list(pose)
     with open(output_file, "a") as f:
         np.savetxt(f, np.array([pose_row]), fmt=fmt)
     stats_file = output_file.replace(".txt", "_statistics.txt")
-    stats_row = [query_idx, anchor_idx] + list(statistics)
+    stats_row = [query_seq, anchor_seq, query_idx, anchor_idx] + list(statistics)
     with open(stats_file, "a") as f:
         np.savetxt(f, np.array([stats_row]), fmt=fmt)
 
@@ -78,6 +90,7 @@ def load_processed_pairs(filename):
         return set(tuple(map(int, line.strip().split(','))) for line in f)
 
 def mark_pair_processed(filename, anchor_idx, query_idx):
+    ensure_dir_exists(filename)
     with open(filename, "a") as f:
         f.write(f"{anchor_idx},{query_idx}\n")
 
@@ -100,6 +113,7 @@ def main():
     processed_pairs = load_processed_pairs(args.temp_file)
     for _, row in tqdm(pairs_df.iterrows(), total=len(pairs_df), desc="Estimating poses"):
         anchor_idx, query_idx = int(row['anchor_idx']), int(row['query_idx'])
+        anchor_seq, query_seq = int(row['anchor_seq']), int(row['query_seq'])
         if (anchor_idx, query_idx) in processed_pairs:
             continue  # skip already processed
         anchor = dataset[anchor_idx]
@@ -143,24 +157,37 @@ def main():
             else:
                 inlier_im0 = np.empty((0, 2))
                 inlier_im1 = np.empty((0, 2))
-            mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
+            # print("pts3d_im0 shape:", pts3d_im0.shape)
+            # print("inlier_im0 shape:", inlier_im0.shape)
+            # print("inlier_im0:", inlier_im0, type(inlier_im0))
+
+            if inlier_im0.size == 0:
+                print(f"Skipping pair (anchor_idx={anchor_idx}, query_idx={query_idx}) due to empty inlier_im0.")
+                continue  # Skip this pair and move to the next iteration
+            else:
+                mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
+            
             lidar_pts = scene_map[valid_lidar_uv[:, 1], valid_lidar_uv[:, 0]]
 
-            T_anchor_base = pose_to_se3(anchor['pose'])
+            if len(inlier_im0>=4):
+                T_local_anchor = pose_to_se3(anchor['pose'])   # 4x4 matrix
+                T_local_query = pose_to_se3(query['pose'])    # 4x4 matrix
+                T_query_anchor_gt = np.linalg.inv(T_local_query @ T_base_cam) @ T_local_anchor @ T_base_cam
+                pose_gt = se3_to_pose(T_query_anchor_gt)
+                # print("GT Pose: ", pose_gt)
+                # MASt3R estimation
 
-            # MASt3R estimation
-            if len(inlier_im0) >= 4:
                 T_query_anchor_mast3r = solve_pnp(
                     mast3r_pts,
                     inlier_im1, K_new
                 )
                 if T_query_anchor_mast3r is not None:
-                    T_m_local = T_anchor_base @ T_base_cam @ np.linalg.inv(T_query_anchor_mast3r)
+                    T_m_local = T_local_anchor @ T_base_cam @ np.linalg.inv(T_query_anchor_mast3r)
                     pose_m = se3_to_pose(T_m_local)
 
                     # Compute statistics
                     pos_error, x_error, y_error, z_error, rot_error, _ = compute_statistics(
-                        pose_m, anchor['pose']
+                        se3_to_pose(T_query_anchor_mast3r), pose_gt
                     )
                     median_depth_mast3r = np.median(mast3r_pts[:, 2]) if mast3r_pts.size > 0 else None
                     mast3r_statistics = [n_matches, n_inliers, median_depth_mast3r, x_error, y_error, z_error, pos_error, rot_error]
@@ -168,56 +195,56 @@ def main():
                     # Save immediately
                     save_estimation_and_statistics(
                         f"{args.output_prefix}_mast3r.txt",
-                        query_idx, anchor_idx, pose_m, mast3r_statistics
+                        anchor_seq, query_seq, query_idx, anchor_idx, pose_m, mast3r_statistics
                     )
 
-            # LiDAR estimation
-            if len(valid_lidar_uv) >= 4:
+                # LiDAR estimation
+
                 T_query_anchor_lidar = solve_pnp(
                     lidar_pts,
                     inlier_im1, K_new
                 )
                 if T_query_anchor_lidar is not None:
-                    T_l_local = T_anchor_base @ T_base_cam @ np.linalg.inv(T_query_anchor_lidar)
+                    T_l_local = T_local_anchor @ T_base_cam @ np.linalg.inv(T_query_anchor_lidar)
                     pose_l = se3_to_pose(T_l_local)
-
+                    # print("Lidar Pose: ", pose_l)
                     # Compute statistics
                     pos_error, x_error, y_error, z_error, rot_error, _ = compute_statistics(
-                        pose_l, anchor['pose']
+                        se3_to_pose(T_query_anchor_lidar), pose_gt
                     )
                     median_depth_lidar = np.median(lidar_pts[:, 2]) if lidar_pts.size > 0 else None
-                    lidar_statistics = [query_idx, anchor_idx, n_matches, n_inliers, median_depth_lidar, x_error, y_error, z_error, pos_error, rot_error]
+                    lidar_statistics = [n_matches, n_inliers, median_depth_lidar, x_error, y_error, z_error, pos_error, rot_error]
 
                     # Save immediately
                     save_estimation_and_statistics(
                         f"{args.output_prefix}_lidar.txt",
-                        query_idx, anchor_idx, pose_l, lidar_statistics
+                        anchor_seq, query_seq, query_idx, anchor_idx, pose_l, lidar_statistics
                     )
 
-            # Scaled estimations (v3, v4, ICP)
-            for scale_type, output_file in [
-                ('v3', f"{args.output_prefix}_mast3r_scaled_v3.txt"),
-                ('v4', f"{args.output_prefix}_mast3r_scaled_v4.txt"),
-                ('icp', f"{args.output_prefix}_mast3r_scaled_icp.txt")
-            ]:
-                scaled_mast3r_pc, _ = compute_scaled_points(scale_type, mast3r_pts, lidar_pts)
-                T_scaled = scale_pnp(scale_type, mast3r_pts, lidar_pts, inlier_im1, K_new)
-                if T_scaled is not None:
-                    T_scaled_local = T_anchor_base @ T_base_cam @ np.linalg.inv(T_scaled)
-                    pose_scaled = se3_to_pose(T_scaled_local)
+                # Scaled estimations (v3, v4, ICP)
+                for scale_type, output_file in [
+                    ('v3', f"{args.output_prefix}_mast3r_scaled_v3.txt"),
+                    ('v4', f"{args.output_prefix}_mast3r_scaled_v4.txt"),
+                    ('icp', f"{args.output_prefix}_mast3r_scaled_icp.txt")
+                ]:
+                    scaled_mast3r_pc, _ = compute_scaled_points(scale_type, mast3r_pts, lidar_pts)
+                    T_scaled = scale_pnp(scale_type, mast3r_pts, lidar_pts, inlier_im1, K_new)
+                    if T_scaled is not None:
+                        T_scaled_local = T_local_anchor @ T_base_cam @ np.linalg.inv(T_scaled)
+                        pose_scaled = se3_to_pose(T_scaled_local)
 
-                    # Compute statistics
-                    pos_error, x_error, y_error, z_error, rot_error, pointmap_error = compute_statistics(
-                        pose_scaled, anchor['pose'], mast3r_pts, lidar_pts
-                    )
-                    median_depth = np.median(scaled_mast3r_pc[:, 2]) if scaled_mast3r_pc.size > 0 else None
-                    statistics = [query_idx, anchor_idx, n_matches, n_inliers, median_depth, x_error, y_error, z_error, pos_error, rot_error, pointmap_error]
+                        # Compute statistics
+                        pos_error, x_error, y_error, z_error, rot_error, pointmap_error = compute_statistics(
+                            se3_to_pose(T_scaled), pose_gt, mast3r_pts, lidar_pts
+                        )
+                        median_depth = np.median(scaled_mast3r_pc[:, 2]) if scaled_mast3r_pc.size > 0 else None
+                        statistics = [n_matches, n_inliers, median_depth, x_error, y_error, z_error, pos_error, rot_error, pointmap_error]
 
-                    # Save immediately
-                    save_estimation_and_statistics(
-                        output_file,
-                        query_idx, anchor_idx, pose_scaled, statistics
-                    )
+                        # Save immediately
+                        save_estimation_and_statistics(
+                            output_file,
+                            anchor_seq, query_seq, query_idx, anchor_idx, pose_scaled, statistics
+                        )
         # Mark as processed only after all processing and saving
         mark_pair_processed(args.temp_file, anchor_idx, query_idx)
 
