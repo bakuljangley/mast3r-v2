@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation as Rscipy
 import torch
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
+from scipy.spatial.transform import Rotation as R
 from mast3r.fast_nn import fast_reciprocal_NNs
 from dust3r.inference import inference
 from dust3r.utils.image import load_images
