@@ -10,36 +10,7 @@ from dust3r.inference import inference
 from dust3r.utils.image import load_images
 import time
 
-def pnp_to_se3(rvec, tvec):
-    """Convert OpenCV PnP output (rvec, tvec) to a 4x4 SE(3) transformation matrix."""
-    R, _ = cv2.Rodrigues(rvec)
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = tvec.ravel()
-    return T
-
-def pose_to_se3(pose_array):
-    """Convert a pose [tx, ty, tz, qx, qy, qz, qw] to a 4x4 SE(3) transformation matrix."""
-    tx, ty, tz, qx, qy, qz, qw = pose_array
-    T = np.eye(4)
-    T[:3, :3] = Rscipy.from_quat([qx, qy, qz, qw]).as_matrix()
-    T[:3, 3] = [tx, ty, tz]
-    return T
-
-def se3_to_pose(T):
-    """
-    Convert a 4x4 transformation SE(3) matrix to (tx, ty, tz, qx, qy, qz, qw).
-
-    Args:
-        T (np.ndarray): 4x4 transformation matrix.
-
-    Returns:
-        list: [tx, ty, tz, qx, qy, qz, qw]
-    """
-    t = T[:3, 3]
-    q = Rscipy.from_matrix(T[:3, :3]).as_quat()
-    return list(t) + list(q)
-
+from transformations import pnp_to_se3
 
 def solve_pnp(pts3d, pts2d, K):
     """

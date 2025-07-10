@@ -145,6 +145,20 @@ class vbrDataset:
             'pose':         pose,
             'timestamp':    img_time
         }
+    
+    def get_lidar(self, idx):
+        img_time = self.image_timestamps[idx]
+
+        # — LiDAR —
+        lidar_path = self.get_closest_lidar(img_time)
+        if lidar_path is None:
+            lidar_pts = np.array([[-1, -1, -1]])
+        else:
+            raw = np.fromfile(lidar_path, dtype=self.lidar_dtype)
+            # extract x,y,z:
+            lidar_pts = np.stack([raw['x'], raw['y'], raw['z']], axis=-1)
+        return lidar_pts
+
 
 
     def get_image_lidar_pose_stats(self):
