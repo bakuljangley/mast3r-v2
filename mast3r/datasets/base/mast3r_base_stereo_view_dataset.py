@@ -215,7 +215,8 @@ class MASt3RBaseStereoViewDataset(BaseStereoViewDataset):
             assert np.isfinite(view['depthmap']).all(), f'NaN in depthmap for view {view_name(view)}'
 
             pts3d, valid_mask = depthmap_to_absolute_camera_coordinates(**view)
-
+            #pts3d is np.stack((x_cam, y_cam, z_cam), axis=-1).astype(np.float32) here in the camera frame 
+            #if providing a view it needs to be in the camera frame
             view['pts3d'] = pts3d
             view['valid_mask'] = valid_mask & np.isfinite(pts3d).all(axis=-1)
 

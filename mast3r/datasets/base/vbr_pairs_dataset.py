@@ -14,18 +14,25 @@ from scipy.spatial.transform import Rotation as R
 from .mast3r_base_stereo_view_dataset import MASt3RBaseStereoViewDataset
 
 class VBRPairsDataset(MASt3RBaseStereoViewDataset):
-    def __init__(self, root_dir, pairs_txt, calib_yaml, poses_txt, depth_dir, **kwargs):
+    def __init__(self, root_dir, split, pairs_txt, calib_yaml, poses_txt, depth_dir, **kwargs):
         super().__init__(**kwargs)
 
         self.root_dir = Path(root_dir)
         self.image_dir = self.root_dir / "camera_left/data"
         self.depth_dir = Path(depth_dir)
         self.calib = self._load_calibration(calib_yaml)
-
+        # Configure split
+        if split == "train":
+            self.split = "train"
+        elif split == "test":
+            self.split = "test"
+        else:
+            raise ValueError(f"Unknown split: {split}")
         self.poses_df = np.loadtxt(poses_txt, comments="#")
         self.pose_values = self.poses_df[:, 1:]  # [tx,ty,tz,qx,qy,qz,qw]
-        self.pairs = np.loadtxt(pairs_txt, dtype=int)
+        self.pairs = self._load_pairs(pairs_txt, self.split)
         self.num_views = 2
+        self.is_metric_scale = True #overwrite the metric scale flag
 
     def __len__(self):
         return len(self.pairs)
@@ -33,6 +40,18 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
     def _get_views(self, idx, resolution, rng):
         anchor_idx, query_idx = self.pairs[idx]
         return [self._view(anchor_idx), self._view(query_idx)]
+    
+    def _load_pairs(self, pairs_txt, split):
+        """
+        Load pairs based on the split.
+        """
+        print(pairs_txt)
+        pairs_path = Path(pairs_txt) / f"{split}_pairs.txt"
+        print(pairs_path)
+        if not pairs_path.exists():
+            raise FileNotFoundError(f"Pairs file for split '{split}' not found: {pairs_path}")
+        return np.loadtxt(pairs_path, dtype=int)
+
 
     def _view(self, idx):
         img_path = self.image_dir / f"{idx:010d}.png"
@@ -40,8 +59,8 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
         img = np.array(Image.open(img_path).convert("RGB"))
         depth = np.load(depth_path).astype(np.float32)
         depth[~np.isfinite(depth)] = 0.0
-
-        pose = self._pose(idx)
+        T_cam_lidar = self.calib['cam_l']['T_cam_lidar'].astype(np.float32)
+        pose = T_cam_lidar @ self._pose(idx)
         K = self.calib['cam_l']['K'].astype(np.float32)
 
         return {
@@ -65,12 +84,7 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
         return T
 
     def _load_calibration(self, yaml_path):
-        with open(yaml_path, 'r') as f:
-            data = yaml.safe_load(f)
-        cam = data['cam_l']
-        fx, fy, cx, cy = cam['intrinsics']
-        K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
-        return {'cam_l': {'K': K}}
+        return load_calibration(yaml_path)
 
 
 def load_calibration(yaml_path):
