@@ -53,7 +53,7 @@ CUDA_VISIBLE_DEVICES=6
 OUTPUT_DIR_CHECKPOINTS="checkpoints/mast3r_vbr_demo"
 
 # --- Launch Training ---
-torchrun --nproc_per_node=1 train.py \
+torchrun --nproc_per_node=1 --master_port=29501 train.py \
     --train_dataset "$TRAIN_DATASET" \
     --test_dataset "$TEST_DATASET" \
     --model "$MODEL" \

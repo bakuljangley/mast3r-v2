@@ -10,13 +10,14 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from my_utils.my_vbr_dataset import vbrDataset, load_calibration, generate_depth_and_scene_maps
+from my_vbr_utils.vbr_dataset import vbrDataset, load_calibration
+from my_utils.my_vbr_dataset import generate_depth_and_scene_maps
 from my_utils.mast3r_utils import (
     get_master_output, get_mast3r_image_shape, scale_intrinsics, overlap,
-    pose_to_se3, se3_to_pose, solve_pnp, quaternion_rotational_error
+    solve_pnp, quaternion_rotational_error
 )
 from my_utils.scaling import scale_pnp, compute_scaled_points
-
+from my_utils.transformations import pose_to_se3, se3_to_pose
 def parse_args():
     parser = argparse.ArgumentParser(description="Estimate poses from anchor-query pairs CSV.")
     parser.add_argument('--dataset', type=str, required=True)
@@ -207,6 +208,9 @@ def main():
     for _, row in tqdm(pairs_df.iterrows(), total=len(pairs_df), desc="Estimating poses"):
         anchor_idx, query_idx = int(row['anchor_idx']), int(row['query_idx'])
         anchor_seq, query_seq = int(row['anchor_seq']), int(row['query_seq'])
+        n_matches, n_inliers = int(row['num_matches']), int(row['num_inliers'])
+        if n_inliers<=args.min_inliers:
+                continue
         if (anchor_idx, query_idx) in processed_pairs:
             continue  # skip already processed
         anchor = dataset[anchor_idx]

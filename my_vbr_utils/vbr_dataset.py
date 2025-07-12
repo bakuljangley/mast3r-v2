@@ -4,6 +4,203 @@ import numpy as np
 import pandas as pd
 import yaml
 
+class vbrDataset:
+    # ROS2 PointField datatype code → NumPy dtype string
+    ROS2NP = {
+        1: 'i1',   # INT8
+        2: 'u1',   # UINT8
+        3: 'i2',   # INT16
+        4: 'u2',   # UINT16
+        5: 'i4',   # INT32
+        6: 'u4',   # UINT32
+        7: 'f4',   # FLOAT32
+        8: 'f8',   # FLOAT64
+    }
+
+    def __init__(self, root_dir, pose_file, max_time_diff=0.1):
+        self.root_dir      = root_dir
+        self.max_time_diff = max_time_diff  # in seconds
+
+        # ── 1) BUILD LIDAR DTYPE FROM metadata.json ─────────────────────────
+        meta_path = os.path.join(root_dir, 'ouster_points', '.metadata.json')
+        with open(meta_path, 'r') as f:
+            meta = json.load(f)
+
+        fields  = meta['fields']
+        names   = [fld['name']             for fld in fields]
+        formats = [self.ROS2NP[fld['datatype']] for fld in fields]
+        offsets = [fld['offset']           for fld in fields]
+
+        # minimal itemsize = last offset + its dtype size
+        last_off   = max(offsets)
+        last_fmt   = formats[offsets.index(last_off)]
+        minimal_sz = last_off + np.dtype(last_fmt).itemsize
+
+        # list all .bin files so we can auto-detect true point_step
+        lidar_data_dir    = os.path.join(root_dir, 'ouster_points', 'data')
+        self.lidar_files  = sorted(
+            os.path.join(lidar_data_dir, fn)
+            for fn in os.listdir(lidar_data_dir) if fn.endswith('.bin')
+        )
+        if not self.lidar_files:
+            raise RuntimeError(f"No .bin files found in {lidar_data_dir}")
+
+        # inspect the first file’s size, bump itemsize until it divides evenly
+        filesize = os.path.getsize(self.lidar_files[0])
+        itemsize = minimal_sz
+        while filesize % itemsize != 0:
+            itemsize += 1
+
+        # final structured dtype
+        self.lidar_dtype = np.dtype({
+            'names':    names,
+            'formats':  formats,
+            'offsets':  offsets,
+            'itemsize': itemsize
+        })
+
+
+        # ── 2) LOAD LiDAR TIMESTAMPS ────────────────────────────────────────
+        ts_path = os.path.join(root_dir, 'ouster_points', 'timestamps.txt')
+        self.lidar_timestamps = [
+            pd.to_datetime(line).timestamp()
+            for line in open(ts_path).read().splitlines()
+        ]
+
+        # ── 3) LOAD IMAGE TIMESTAMPS ────────────────────────────────────────
+        img_ts = os.path.join(root_dir, 'camera_left', 'timestamps.txt')
+        self.image_timestamps = [
+            pd.to_datetime(line).timestamp()
+            for line in open(img_ts).read().splitlines()
+        ]
+        # Left image paths
+        img_left_dir = os.path.join(root_dir, 'camera_left', 'data')
+        self.image_files_left = sorted(
+            [os.path.join(img_left_dir, fn) for fn in os.listdir(img_left_dir) if fn.endswith('.png')],
+            key=lambda x: int(os.path.basename(x).split('.')[0])
+        )
+
+
+        # Right image paths
+        img_right_dir = os.path.join(root_dir, 'camera_right', 'data')
+        self.image_files_right = sorted(
+            [os.path.join(img_right_dir, fn) for fn in os.listdir(img_right_dir) if fn.endswith('.png')],
+            key=lambda x: int(os.path.basename(x).split('.')[0])
+)
+        # ── 4) LOAD POSES ───────────────────────────────────────────────────
+        self.poses = pd.read_csv(
+            pose_file,
+            sep=r"\s+",
+            comment='#',
+            names=['timestamp','tx','ty','tz','qx','qy','qz','qw']
+        )
+        self.pose_timestamps = self.poses['timestamp'].values
+
+
+    def __len__(self):
+        return len(self.image_timestamps)
+
+
+    def get_closest_lidar(self, img_time): #nearest neighbour search
+        diffs = np.abs(np.array(self.lidar_timestamps) - img_time)
+        idx   = diffs.argmin()
+        if diffs[idx] > self.max_time_diff:
+            return None
+        return self.lidar_files[idx]
+
+
+    def get_closest_pose(self, img_time):
+        diffs = np.abs(self.pose_timestamps - img_time)
+        idx   = diffs.argmin()
+        if diffs[idx] > self.max_time_diff:
+            return None
+        row = self.poses.iloc[idx]
+        return row[['tx','ty','tz','qx','qy','qz','qw']].to_numpy()
+
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return [self[i] for i in range(*idx.indices(len(self)))] #to account for slicing 
+        img_time = self.image_timestamps[idx]
+
+        # — LiDAR —
+        lidar_path = self.get_closest_lidar(img_time)
+        if lidar_path is None:
+            lidar_pts = np.array([[-1, -1, -1]])
+        else:
+            raw = np.fromfile(lidar_path, dtype=self.lidar_dtype)
+            # extract x,y,z:
+            lidar_pts = np.stack([raw['x'], raw['y'], raw['z']], axis=-1)
+
+        # — Pose —
+        pose = self.get_closest_pose(img_time)
+        if pose is None:
+            pose = np.array([-1, -1, -1, -1, -1, -1, -1])
+
+        return {
+            'image_left':  self.image_files_left[idx],
+            'image_right': self.image_files_right[idx],
+            'lidar_points': lidar_pts,
+            'pose':         pose,
+            'timestamp':    img_time
+        }
+    
+    def get_lidar(self, idx):
+        img_time = self.image_timestamps[idx]
+
+        # — LiDAR —
+        lidar_path = self.get_closest_lidar(img_time)
+        if lidar_path is None:
+            lidar_pts = np.array([[-1, -1, -1]])
+        else:
+            raw = np.fromfile(lidar_path, dtype=self.lidar_dtype)
+            # extract x,y,z:
+            lidar_pts = np.stack([raw['x'], raw['y'], raw['z']], axis=-1)
+        return lidar_pts
+
+
+
+    def get_image_lidar_pose_stats(self):
+        with_lidar = []
+        with_pose  = []
+        with_both  = []
+
+        for i in range(len(self)):
+            has_l = (self.get_closest_lidar(self.image_timestamps[i]) is not None)
+            has_p = (self.get_closest_pose(self.image_timestamps[i]) is not None)
+            if has_l: with_lidar.append(i)
+            if has_p: with_pose.append(i)
+            if has_l and has_p:
+                with_both.append(i)
+
+        return {
+            "count_with_lidar": len(with_lidar),
+            "images_with_lidar": with_lidar,
+            "count_with_pose":  len(with_pose),
+            "images_with_pose": with_pose,
+            "count_with_both":  len(with_both),
+            "images_with_both": with_both,
+        }
+    
+    def get_local_trajectory_array(self):
+        """
+        Returns a NumPy array of shape (N_valid, 8), where each row is:
+        [image_index, tx, ty, tz, qx, qy, qz, qw] — only for images that have a valid pose.
+        """
+        matched = []
+        pose_ts = self.pose_timestamps
+        pose_all = self.poses[['tx','ty','tz','qx','qy','qz','qw']].values
+
+        for i, ts in enumerate(self.image_timestamps):
+            diffs = np.abs(pose_ts - ts)
+            j = diffs.argmin()
+            if diffs[j] <= self.max_time_diff:
+                matched.append([i, *pose_all[j]])
+
+        return np.array(matched)
+
+
+
 class vbrInterpolatedDataset:
     ROS2NP = {
         1: 'i1',   # INT8
@@ -227,7 +424,6 @@ class vbrInterpolatedDataset:
 
         return pose
     
-
 
 class CombinedDataset:
     def __init__(self, datasets):
