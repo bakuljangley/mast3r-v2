@@ -83,8 +83,10 @@ class Regr3D (Regr3D_dust3r):
             mask = ~gt1['is_metric_scale']
         else:
             mask = torch.ones_like(gt1['is_metric_scale'])
+            ## mask is true for samples that need normalisation
         # normalize 3d points
         if self.norm_mode and mask.any():
+            #check mask then normalise the prediction if required
             pr_pts1[mask], pr_pts2[mask] = normalize_pointcloud(pr_pts1[mask], pr_pts2[mask], self.norm_mode,
                                                                 valid1[mask], valid2[mask])
 

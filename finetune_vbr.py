@@ -7,8 +7,9 @@
 # --------------------------------------------------------
 from mast3r.model import AsymmetricMASt3R
 from mast3r.losses import ConfMatchingLoss, MatchingLoss, APLoss, Regr3D, InfoNCE, Regr3D_ScaleShiftInv
-from mast3r.datasets import ARKitScenes, BlendedMVS, Co3d, MegaDepth, ScanNetpp, StaticThings3D, Waymo, WildRGBD
-from mast3r.datasets.base.vbr_pairs_dataset import VBRPairsDataset
+from mast3r.datasets import VBRPairsDataset, ARKitScenes, BlendedMVS, Co3d, MegaDepth, ScanNetpp, StaticThings3D, Waymo, WildRGBD
+from mast3r.datasets import VBRPairsDataset
+
 import mast3r.utils.path_to_dust3r  # noqa
 # add mast3r classes to dust3r imports
 import dust3r.training
@@ -29,9 +30,7 @@ dust3r.datasets.ScanNetpp = ScanNetpp
 dust3r.datasets.StaticThings3D = StaticThings3D
 dust3r.datasets.Waymo = Waymo
 dust3r.datasets.WildRGBD = WildRGBD
-duster.datasets.VBRPairsDataset = VBRPairsDataset #dynamically load the dataset into the dust3r namespace
-
-
+dust3r.datasets.VBRPairsDataset = VBRPairsDataset
 from dust3r.training import get_args_parser as dust3r_get_args_parser  # noqa
 from dust3r.training import train  # noqa
 

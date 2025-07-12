@@ -130,7 +130,8 @@ dmypy.json
 
 
 #model checkpoints
-checkpoints/*.pth
+checkpoints/
+
 
 #ignore specific folders
 results/
