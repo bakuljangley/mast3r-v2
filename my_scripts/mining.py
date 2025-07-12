@@ -16,7 +16,7 @@ from tqdm import tqdm
 from itertools import product
 
 # Import your dataset and model utilities
-from my_utils.my_vbr_dataset import vbrDataset, load_calibration
+from my_vbr_utils.vbr_dataset import vbrDataset, load_calibration
 from my_utils.mast3r_utils import get_master_output
 
 def parse_args():
@@ -112,20 +112,38 @@ def main():
                     try:
                         anchor = dataset[anchor_idx]
                         query = dataset[query_idx]
-                        output = get_master_output(
+                        #first image is anchor
+                        output_aq = get_master_output(
                             model, args.device,
                             anchor['image_left'], query['image_left'],
                             visualize=False, verbose=False
                         )
-                        matches_im0 = output[0]
-                        matches_im1 = output[1]
-                        num_matches = len(matches_im0)
-
-                        if num_matches >= 8:
-                            F, mask = cv2.findFundamentalMat(matches_im0, matches_im1, cv2.FM_RANSAC, 1.0, 0.99)
-                            num_inliers = int(mask.sum()) if mask is not None else 0
+                        matches_im0_aq = output_aq[0]
+                        matches_im1_aq = output_aq[1]
+                        num_matches_aq = len(matches_im0_aq)
+                        if num_matches_aq >= 8:
+                            F_aq, mask_aq = cv2.findFundamentalMat(matches_im0_aq, matches_im1_aq, cv2.FM_RANSAC, 1.0, 0.99)
+                            num_inliers_aq = int(mask_aq.sum()) if mask_aq is not None else 0
                         else:
-                            num_inliers = 0
+                            num_inliers_aq = 0
+                        #first image is query
+                        output_qa = get_master_output(
+                            model, args.device,
+                            query['image_left'], anchor['image_left'],
+                            visualize=False, verbose=False
+                        )
+                        matches_im0_qa = output_qa[0]
+                        matches_im1_qa = output_qa[1]
+                        num_matches_qa = len(matches_im0_qa)
+                        if num_matches_qa >= 8:
+                            F_qa, mask_qa = cv2.findFundamentalMat(matches_im0_qa, matches_im1_qa, cv2.FM_RANSAC, 1.0, 0.99)
+                            num_inliers_qa = int(mask_qa.sum()) if mask_qa is not None else 0
+                        else:
+                            num_inliers_qa = 0
+
+                        num_inliers = min(num_inliers_aq, num_inliers_qa)
+                        num_matches = min(num_matches_aq, num_matches_qa)
+
 
                         # Save result immediately
                         writer.writerow({

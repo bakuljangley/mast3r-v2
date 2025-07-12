@@ -29,7 +29,7 @@ dust3r.datasets.ScanNetpp = ScanNetpp
 dust3r.datasets.StaticThings3D = StaticThings3D
 dust3r.datasets.Waymo = Waymo
 dust3r.datasets.WildRGBD = WildRGBD
-duster.datasets.VBRPairsDataset = VBRPairsDataset #dynamically load the dataset into the dust3r namespace
+dust3r.datasets.VBRPairsDataset = VBRPairsDataset #dynamically load the dataset into the dust3r namespace
 
 
 from dust3r.training import get_args_parser as dust3r_get_args_parser  # noqa

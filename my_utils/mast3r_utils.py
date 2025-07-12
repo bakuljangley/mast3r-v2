@@ -10,7 +10,7 @@ from dust3r.inference import inference
 from dust3r.utils.image import load_images
 import time
 
-from transformations import pnp_to_se3
+from .transformations import pnp_to_se3
 
 def solve_pnp(pts3d, pts2d, K):
     """
