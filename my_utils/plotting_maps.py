@@ -1,4 +1,4 @@
-from ipyleaflet import Map, Polyline, Marker, TileLayer, Icon
+from ipyleaflet import Map, Polyline, Marker, TileLayer, Icon, ScaleControl
 from ipywidgets import IntSlider, interact
 import numpy as np
 def plot_trajectory_with_heading(
@@ -35,7 +35,7 @@ def plot_trajectory_with_heading(
     )
     m.layout.width = width
     m.layout.height = height
-
+    m.add(ScaleControl(position='topright'))
     traj_line = Polyline(locations=latlon_traj[:1], color=line_color, weight=4, fill=False)
     m.add_layer(traj_line)
 
@@ -59,6 +59,8 @@ def plot_trajectory_with_heading(
         location=latlon_traj[0]
     )
     m.add_layer(pin_marker)
+
+
 
     def update(idx):
         traj_line.locations = latlon_traj[:idx+1]

@@ -11,23 +11,30 @@ def load_statistics(pointcloud_type, base_path):
         num_columns = len(df_temp.columns)
 
         # Define column names based on detected structure
-        if num_columns == 15:
+        if num_columns == 13:
             columns = [
-                "query_seq", "anchor_seq", "query_idx", "anchor_idx",
+                "query_idx", "anchor_idx",
                 "num_matches", "num_inliers", "num_overlapping", "median_depth",
                 "x_error", "y_error", "z_error", "pos_error", "rot_error", 
                 "distance_anchor_query", "status"
             ]
-        elif num_columns == 17:
+        elif num_columns == 14:
             columns = [
-                "query_seq", "anchor_seq", "query_idx", "anchor_idx",
+                "query_idx", "anchor_idx",
+                "num_matches", "num_inliers", "num_overlapping", "median_depth",
+                "x_error", "y_error", "z_error", "pos_error", "rot_error", 
+                "distance_anchor_query", "pointmap_error", "status"
+            ]            
+        elif num_columns == 15:
+            columns = [
+                "query_idx", "anchor_idx",
                 "num_matches", "num_inliers", "num_overlapping", "median_depth",
                 "x_error", "y_error", "z_error", "pos_error", "rot_error", 
                 "distance_anchor_query", "pointmap_error", "scale", "status"
             ]
-        elif num_columns == 19:
+        elif num_columns == 17:
             columns = [
-                "query_seq", "anchor_seq", "query_idx", "anchor_idx",
+                "query_idx", "anchor_idx",
                 "num_matches", "num_inliers", "num_overlapping", "median_depth",
                 "x_error", "y_error", "z_error", "pos_error", "rot_error", 
                 "distance_anchor_query", "pointmap_error", 

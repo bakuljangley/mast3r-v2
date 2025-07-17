@@ -135,4 +135,8 @@ checkpoints/
 
 #ignore specific folders
 results/
-
+results_full2/
+results_step50_v2/
+results_step50v2/
+results_step50v3/
+results_step50v4/
