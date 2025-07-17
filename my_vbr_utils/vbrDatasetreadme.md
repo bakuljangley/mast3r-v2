@@ -22,6 +22,8 @@ The final directory structure should be:
 │   │       └── .metadata.json  # Point cloud metadata
 │   └── campus_train0/
 │       └── campus_train0_gt.txt # Ground truth poses (timestamp tx ty tz qx qy qz qw)
+|   |___campus_train1_kitti/
+|   |___campus_train1/  
 ├── spagna/
 ├── ciampino/
 └── colosseo/
@@ -121,22 +123,16 @@ For certain manually selected images in the dataset, I selected markers (such as
 4. **PnP:** To find the transformation from UTM to camera frame (`T_cam_utm`)
 
 5. **Estimate Camera Position in UTM Frame:** by converting back to latitude and longitude.
-     $$
-     \text{Camera\_pos}_{\text{UTM}} = -R^T \cdot t
-     $$
+     $$\text{Camera\_pos}_{\text{UTM}} = -R^T \cdot t$$
 
 #### **Coordinate Frame Alignment:**
 From the dataset, we obtain the ground truth camera pose `T_local_cam` for the same image (camera in local frame).
-$$
-T_{\text{UTM} \leftarrow \text{Local}} = T_{\text{UTM} \leftarrow \text{Cam}} \cdot T_{\text{Cam} \leftarrow \text{Local}}
-$$
+$$T_{\text{UTM} \leftarrow \text{Local}} = T_{\text{UTM} \leftarrow \text{Cam}} \cdot T_{\text{Cam} \leftarrow \text{Local}}$$
 
 However, directly applying the transformation from each individually localized image can result in inconsistent orientations and misaligned axes between the local and global (UTM) frames. To resolve this, a similarity transform is computed, which finds the optimal 2D rotation, scale, and translation that best aligns the 5 localised points (with local poses defined at the origin of the sequence) with the global UTM trajectory. This ensures that the axes and scale of the local frame are consistently matched to those of the global frame across all images.
 
 After localizing 4-5 images using steps 1-5, a rotation may exist between the local poses and UTM localizations. The similarity transform aligns two sets of points by estimating a scale, rotation, and translation that best map one to the other. First, both point sets are centered by subtracting their means. The algorithm then computes the optimal rotation using Singular Value Decomposition (SVD) on their covariance matrix. The scale factor is computed as the ratio of their centered norms, and the translation aligns their centroids after scaling and rotation. This results in a transformation:
-$$
-\mathbf{x}_{\text{global}} = s \cdot R \cdot \mathbf{x}_{\text{local}} + \mathbf{t}
-$$
+$$\mathbf{x}_{\text{global}} = s \cdot R \cdot \mathbf{x}_{\text{local}} + \mathbf{t}$$
 that maps local coordinates into the UTM frame, aligning the axes and scales of both coordinate systems, where:
 
 - **$\mathbf{x}_{\text{local}}$**: point in the local coordinate frame  

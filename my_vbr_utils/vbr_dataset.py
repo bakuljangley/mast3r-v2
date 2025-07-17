@@ -138,7 +138,7 @@ class vbrDataset:
             pose = np.array([-1, -1, -1, -1, -1, -1, -1])
 
         return {
-            'image_left':  self.image_files_left[idx],
+            'image':  self.image_files_left[idx],
             'image_right': self.image_files_right[idx],
             'lidar_points': lidar_pts,
             'pose':         pose,
@@ -334,29 +334,37 @@ class vbrInterpolatedDataset:
 
     def interpolate_lidar(self, img_time):
         diffs = np.array(self.lidar_timestamps) - img_time
-        idx_before = np.where(diffs <= 0, diffs, -np.inf).argmax()
-        idx_after = np.where(diffs > 0, diffs, np.inf).argmin()
-        if idx_before == -np.inf or idx_after == np.inf:
+        # idx_before = np.where(diffs <= 0, diffs, -np.inf).argmax()
+        # idx_after = np.where(diffs > 0, diffs, np.inf).argmin()
+        # if idx_before == -np.inf or idx_after == np.inf:
+        #     return None
+        # t_before = self.lidar_timestamps[idx_before]
+        # t_after = self.lidar_timestamps[idx_after]
+        # # Handle case where timestamps are identical
+        # if t_before == t_after:
+        # # No interpolation needed, just return the lidar data
+        #     lidar_data = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
+        #     return np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
+        # # Read the structured LiDAR data correctly
+        # lidar_before = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
+        # lidar_after = np.fromfile(self.lidar_files[idx_after], dtype=self.lidar_dtype)
+        # alpha = (img_time - t_before) / (t_after - t_before)
+        # # Extract x, y, z coordinates from structured arrays
+        # xyz_before = np.column_stack([lidar_before['x'], lidar_before['y'], lidar_before['z']])
+        # xyz_after = np.column_stack([lidar_after['x'], lidar_after['y'], lidar_after['z']])
+        # # Interpolate the xyz coordinates
+        # interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
+        
+        # return interpolated_xyz
+        idx = diffs.argmin()
+        if diffs[idx] > self.max_time_diff:
             return None
-        t_before = self.lidar_timestamps[idx_before]
-        t_after = self.lidar_timestamps[idx_after]
-        # Handle case where timestamps are identical
-        if t_before == t_after:
-        # No interpolation needed, just return the lidar data
-            lidar_data = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
-            return np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
+
         # Read the structured LiDAR data correctly
-        lidar_before = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
-        lidar_after = np.fromfile(self.lidar_files[idx_after], dtype=self.lidar_dtype)
-        alpha = (img_time - t_before) / (t_after - t_before)
+        lidar_data = np.fromfile(self.lidar_files[idx], dtype=self.lidar_dtype)
         # Extract x, y, z coordinates from structured arrays
-        xyz_before = np.column_stack([lidar_before['x'], lidar_before['y'], lidar_before['z']])
-        xyz_after = np.column_stack([lidar_after['x'], lidar_after['y'], lidar_after['z']])
-        # Interpolate the xyz coordinates
-        interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
-        
-        return interpolated_xyz
-        
+        xyz = np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
+        return xyz
 
     def slerp(self, q1, q2, alpha):
         q1 = q1 / np.linalg.norm(q1)
@@ -421,7 +429,6 @@ class vbrInterpolatedDataset:
         pose = self.interpolate_pose(img_time)
         if pose is None:
             pose = np.array([-1, -1, -1, -1, -1, -1, -1])
-
         return pose
     
 
@@ -674,11 +681,12 @@ class VBRDataset:
         return f"VBRDataset({len(self.datasets)} scenes: {self.scene_names})"
     
 
-def load_scene_calibration(scene_name, config_path):
+def load_scene_calibration(location_name, config_path):
     """
-    Loads and returns the calibration dictionary for the given scene.
+    Loads and returns the calibration dictionary for the given location.
+    If multiple scenes exist for the location, defaults to train0.
     Args:
-        scene_name: e.g. 'spagna_train0'
+        location_name: e.g. 'spagna'
         config_path: path to vbrPaths.yaml
     Returns:
         calib: dict loaded from vbr_calib.yaml
@@ -689,21 +697,38 @@ def load_scene_calibration(scene_name, config_path):
 
     base_path = config['vbr_datasets']['base_path']
     # Find the location and split for the scene
-    for location, splits in config['vbr_datasets'].items():
-        if location == 'base_path':
-            continue
-        for split_type in ['train', 'test']:
-            if split_type in splits:
-                for split in splits[split_type]:
-                    if split['name'] == scene_name:
-                        calib_path = os.path.join(
-                            base_path,
-                            location,
-                            scene_name,
-                            "vbr_calib.yaml"
-                        )
-                        return load_calibration(calib_path)
-    raise ValueError(f"Scene {scene_name} not found in config.")
+    if location_name in config['vbr_datasets']:
+        splits = config['vbr_datasets'][location_name]
+        if 'train' in splits:
+            # Default to train0 if it exists
+            train0_scene = next((s for s in splits['train'] if s['name'].endswith('train0')), None)
+            if train0_scene:
+                scene_name = train0_scene['name']
+                calib_path = os.path.join(
+                    base_path,
+                    location_name,
+                    scene_name,
+                    "vbr_calib.yaml"
+                )
+                return load_calibration(calib_path)
+            else:
+                # If train0 doesn't exist, take the first available train scene
+                first_train_scene = next(iter(splits['train']), None)
+                if first_train_scene:
+                    scene_name = first_train_scene['name']
+                    calib_path = os.path.join(
+                        base_path,
+                        location_name,
+                        scene_name,
+                        "vbr_calib.yaml"
+                    )
+                    return load_calibration(calib_path)
+                else:
+                    raise ValueError(f"No train scenes found for location {location_name}")
+        else:
+            raise ValueError(f"No train split found for location {location_name}")
+    else:
+        raise ValueError(f"Location {location_name} not found in config.")
 
 def load_calibration(yaml_path):
     """

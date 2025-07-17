@@ -1,13 +1,5 @@
 from pathlib import Path
 import numpy as np
-import pickle
-from PIL import Image
-import yaml
-from scipy.spatial.transform import Rotation as R
-from .mast3r_base_stereo_view_dataset import MASt3RBaseStereoViewDataset
-
-from pathlib import Path
-import numpy as np
 from PIL import Image
 import yaml
 from scipy.spatial.transform import Rotation as R
@@ -28,8 +20,7 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
             self.split = "test"
         else:
             raise ValueError(f"Unknown split: {split}")
-        self.poses_df = np.loadtxt(poses_txt, comments="#")
-        self.pose_values = self.poses_df[:, 1:]  # [tx,ty,tz,qx,qy,qz,qw]
+        self.pose_values = np.loadtxt(poses_txt, comments="#")
         self.pairs = self._load_pairs(pairs_txt, self.split)
         self.num_views = 2
         self.is_metric_scale = True #overwrite the metric scale flag

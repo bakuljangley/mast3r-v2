@@ -1,19 +1,6 @@
 
 ### Mining Pairs Using Inlier Counting via Fundamental Matrix Estimation
 
-
-#### Sequences in the VBR Spagna Scene with overlap
-
-These are the sequences that have overlap:
-| Anchor Sequence | Query Sequences               |
-|-----------------|-------------------------------|
-| 0               | 3, 10                         |
-| 4               | 10, 11, 3, 5, 19, 12          |
-| 2               | 20, 21                        |
-| 7               | 14                            |
-| 13              | 15                            | 
-
-
 To generate anchor query pairs, inliers are counted using `cv2.fundamentalmatrix()` with matches from MASt3R, a feature matching algorithm. After counting inliers for all pairs from an anchor and query sequence, each query is matched to the top 3 anchors found.
 
 The fundamental matrix is used instead of homography as it 
@@ -22,17 +9,15 @@ The fundamental matrix is used instead of homography as it
 Example usage:
 
 ```
-python my_scripts/mining.py \
-  --dataset /datasets/vbr_slam/spagna/spagna_train0_kitti \
-  --gt /datasets/vbr_slam/spagna/spagna_train0/spagna_train0_gt.txt \
-  --calib /datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml \
-  --sequence_pairs "0:3,10;4:10,11,3,5,19,12;20:2,21;7:14;13:15" \
-  --anchor_step 50 \
-  --query_step 50 \
-  --output results/spagna_matches_inliers_fm.csv \
-  --top_n 3 \
-  --temp_file results/spagna_processed_pairs.txt
+python mining.py --dataset_scene <dataset_scene_name> --anchor_query_json <path_to_anchor_query_json> --anchor_step <anchor_step_size> --query_step <query_step_size> --output <output_csv_file> --top_n <number_of_top_anchors> --device <device_name> --model_name <model_name> --temp_file <temp_file_name>
 ```
+
+```
+python my_scripts/mining.py --dataset_scene spagna --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/spagna.json --anchor_step 50 --query_step 50 --output results_step50_v2/spagna_matches_inliers_fm.csv --top_n 3 --temp_file results_step50_v2/processed_pairs.txt
+
+```
+
+
 
 - Results include the number of matches and inliers for each pair, saved to the specified output file.
 - Sorted pairs (queries matched to their top N anchors) are saved to `{output}_{top_n}.csv`.
@@ -83,16 +68,25 @@ python my_scripts/evaluate.py \
 
 ```bash
 python my_scripts/evaluate_v2.py \
+  --dataset_scene spagna \
+  --pairs_csv results_step50_v2/spagna_matches_inliers_fm_top3_anchors_per_query.csv \
+  --output_prefix results_step50v2/spagna \
+  --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
+  --min_inliers 200 \
+  --temp_file results_step50v2/spagna_processed_pairs.txt
+```
+
+```
+python my_scripts/evaluate.py \
   --dataset /datasets/vbr_slam/spagna/spagna_train0_kitti \
   --gt /datasets/vbr_slam/spagna/spagna_train0/spagna_train0_gt.txt \
   --calib /datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml \
-  --pairs_csv results/spagna_matches_inliers_fm_top3_anchors_per_query_per_anchorseq.csv \
-  --output_prefix results_full/spagna \
+  --pairs_csv results_step50_v2/spagna_matches_inliers_fm_top3_anchors_per_query.csv\
+  --output_prefix results_step50v4/spagna \
   --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
   --min_inliers 200 \
-  --temp_file results_full/spagna_processed_pairs.txt
+  --temp_file results_step50v4/spagna_processed_pairs.txt
 ```
-
 
 **Arguments:**
 - `--dataset`: Path to the dataset in KITTI format.

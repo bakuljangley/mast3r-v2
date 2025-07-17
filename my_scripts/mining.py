@@ -13,18 +13,17 @@ import pandas as pd
 import numpy as np
 import cv2
 from tqdm import tqdm
-from itertools import product
-
+import json
 # Import your dataset and model utilities
-from my_vbr_utils.vbr_dataset import vbrDataset, load_calibration
+from my_vbr_utils.vbr_dataset import VBRDataset, load_scene_calibration
 from my_utils.mast3r_utils import get_master_output
+
+CONFIG_PATH = "/home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbrPaths.yaml"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Mine anchor-query pairs with inlier counting.")
-    parser.add_argument('--dataset', type=str, required=True, help='Path to dataset in kitti format')
-    parser.add_argument('--gt', type=str, required=True, help='Path to ground truth file')
-    parser.add_argument('--calib', type=str, required=True, help='Path to calibration file')
-    parser.add_argument('--sequence_pairs', type=str, required=True, help='Anchor-query sequence pairs in the format \"anchor1:query1,query2;anchor2:query3,query4\"')
+    parser.add_argument('--dataset_scene', type=str, required=True, help='Path to dataset in kitti format')
+    parser.add_argument('--anchor_query_json', type=str, required=True, help='Anchor-query sequence ranges"')
     parser.add_argument('--anchor_step', type=int, default=50)
     parser.add_argument('--query_step', type=int, default=50)
     parser.add_argument('--output', type=str, default='spagna_matches_inliers_fm.csv')
@@ -34,18 +33,29 @@ def parse_args():
     parser.add_argument('--temp_file', type=str, default='processed_pairs.txt', help='File to track processed pairs')
     return parser.parse_args()
 
-def parse_sequence_pairs(sequence_pairs_str):
+def load_anchor_query_dict(json_file_path):
     """
-    Parse the sequence pairs argument into a dictionary.
-    Format: "anchor1:query1,query2;anchor2:query3,query4"
-    Returns: {anchor1: [query1, query2], anchor2: [query3, query4]}
+    Load the anchor-query dictionary from a JSON file.
     """
-    sequence_pairs = {}
-    pairs = sequence_pairs_str.split(';')
-    for pair in pairs:
-        anchor, queries = pair.split(':')
-        sequence_pairs[int(anchor)] = [int(q) for q in queries.split(',')]
-    return sequence_pairs
+    with open(json_file_path, 'r') as f:
+        loaded_dict = json.load(f)
+
+    # Convert string keys back to tuples
+    anchor_query_dict = {tuple(map(int, key.strip("()").split(","))): value for key, value in loaded_dict.items()}
+    return anchor_query_dict
+
+def generate_pairs_from_ranges(anchor_query_dict, anchor_step, query_step):
+    """
+    Generate anchor-query index pairs from anchor and query ranges.
+    """
+    all_pairs = []
+    for anchor_range, query_ranges in anchor_query_dict.items():
+        anchor_indices = list(range(anchor_range[0], anchor_range[1], anchor_step))
+        for query_range in query_ranges:
+            query_indices = list(range(query_range[0], query_range[1], query_step))
+            pairs = [(a, q) for a in anchor_indices for q in query_indices]
+            all_pairs.extend(pairs)
+    return all_pairs
 
 def load_processed_pairs(temp_file):
     """
@@ -73,13 +83,17 @@ def main():
     args = parse_args()
 
     # Load dataset and calibration
-    dataset = vbrDataset(args.dataset, args.gt)
-    calib = load_calibration(args.calib)
+    all_loaded = VBRDataset(CONFIG_PATH, locations=[args.dataset_scene])
+    dataset = all_loaded.get_combined_dataset()
+    calib = load_scene_calibration(location_name=args.dataset_scene, config_path=CONFIG_PATH)
     from mast3r.model import AsymmetricMASt3R
     model = AsymmetricMASt3R.from_pretrained(args.model_name).to(args.device)
 
-    # Parse sequence pairs
-    sequence_pairs = parse_sequence_pairs(args.sequence_pairs)
+    # Load anchor query dictionary from JSON
+    anchor_query_dict = load_anchor_query_dict(args.anchor_query_json)
+
+    # Generate anchor-query pairs
+    all_pairs = generate_pairs_from_ranges(anchor_query_dict, args.anchor_step, args.query_step)
 
     # Ensure the directory for the temporary file exists
     ensure_dir_exists(args.temp_file)
@@ -90,7 +104,7 @@ def main():
     # Ensure output directory exists
     ensure_dir_exists(args.output)
     output_exists = os.path.exists(args.output)
-    fieldnames = ['anchor_seq', 'query_seq','anchor_idx', 'query_idx', 'num_matches', 'num_inliers']
+    fieldnames = ['anchor_idx', 'query_idx', 'num_matches', 'num_inliers']
 
     # Open output CSV for appending
     with open(args.output, 'a', newline='') as csvfile:
@@ -98,85 +112,84 @@ def main():
         if not output_exists:
             writer.writeheader()
 
-        # Process each anchor-query sequence pair
-        for anchor_seq, query_seqs in sequence_pairs.items():
-            anchor_indices = list(range(anchor_seq * 2000, (anchor_seq + 1) * 2000, args.anchor_step))
-            for query_seq in query_seqs:
-                query_indices = list(range(query_seq * 2000, (query_seq + 1) * 2000, args.query_step))
-                pairs = list(product(anchor_indices, query_indices))
-                for anchor_idx, query_idx in tqdm(pairs, desc=f"Anchor {anchor_seq} - Query {query_seq}"):
-                    # Skip already processed pairs
-                    if (anchor_idx, query_idx) in processed_pairs:
-                        continue
+        # Process each anchor-query pair
+        for anchor_idx, query_idx in tqdm(all_pairs, desc="Processing pairs"):
+            # Skip already processed pairs
+            if (anchor_idx, query_idx) in processed_pairs:
+                continue
 
-                    try:
-                        anchor = dataset[anchor_idx]
-                        query = dataset[query_idx]
-                        #first image is anchor
-                        output_aq = get_master_output(
-                            model, args.device,
-                            anchor['image_left'], query['image_left'],
-                            visualize=False, verbose=False
-                        )
-                        matches_im0_aq = output_aq[0]
-                        matches_im1_aq = output_aq[1]
-                        num_matches_aq = len(matches_im0_aq)
-                        if num_matches_aq >= 8:
-                            F_aq, mask_aq = cv2.findFundamentalMat(matches_im0_aq, matches_im1_aq, cv2.FM_RANSAC, 1.0, 0.99)
-                            num_inliers_aq = int(mask_aq.sum()) if mask_aq is not None else 0
-                        else:
-                            num_inliers_aq = 0
-                        #first image is query
-                        output_qa = get_master_output(
-                            model, args.device,
-                            query['image_left'], anchor['image_left'],
-                            visualize=False, verbose=False
-                        )
-                        matches_im0_qa = output_qa[0]
-                        matches_im1_qa = output_qa[1]
-                        num_matches_qa = len(matches_im0_qa)
-                        if num_matches_qa >= 8:
-                            F_qa, mask_qa = cv2.findFundamentalMat(matches_im0_qa, matches_im1_qa, cv2.FM_RANSAC, 1.0, 0.99)
-                            num_inliers_qa = int(mask_qa.sum()) if mask_qa is not None else 0
-                        else:
-                            num_inliers_qa = 0
+            try:
+                anchor = dataset[anchor_idx]
+                query = dataset[query_idx]
+                #first image is anchor
+                output_aq = get_master_output(
+                    model, args.device,
+                    anchor['image'], query['image'],
+                    visualize=False, verbose=False
+                )
+                matches_im0_aq = output_aq[0]
+                matches_im1_aq = output_aq[1]
+                num_matches_aq = len(matches_im0_aq)
+                if num_matches_aq >= 8:
+                    F_aq, mask_aq = cv2.findFundamentalMat(matches_im0_aq, matches_im1_aq, cv2.FM_RANSAC, 1.0, 0.99)
+                    num_inliers_aq = int(mask_aq.sum()) if mask_aq is not None else 0
+                else:
+                    num_inliers_aq = 0
+                #first image is query
+                output_qa = get_master_output(
+                    model, args.device,
+                    query['image'], anchor['image'],
+                    visualize=False, verbose=False
+                )
+                matches_im0_qa = output_qa[0]
+                matches_im1_qa = output_qa[1]
+                num_matches_qa = len(matches_im0_qa)
+                if num_matches_qa >= 8:
+                    F_qa, mask_qa = cv2.findFundamentalMat(matches_im0_qa, matches_im1_qa, cv2.FM_RANSAC, 1.0, 0.99)
+                    num_inliers_qa = int(mask_qa.sum()) if mask_qa is not None else 0
+                else:
+                    num_inliers_qa = 0
 
-                        num_inliers = min(num_inliers_aq, num_inliers_qa)
-                        num_matches = min(num_matches_aq, num_matches_qa)
+                num_inliers = min(num_inliers_aq, num_inliers_qa)
+                num_matches = min(num_matches_aq, num_matches_qa)
 
+                # Find the anchor and query ranges
+                anchor_range = next((k for k, v in anchor_query_dict.items() if k[0] <= anchor_idx < k[1]), None)
+                query_range = next((qr for k, v in anchor_query_dict.items() for qr in v if qr[0] <= query_idx < qr[1]), None)
 
-                        # Save result immediately
-                        writer.writerow({
-                            'anchor_seq': anchor_seq,
-                            'query_seq': query_seq,
-                            'anchor_idx': anchor_idx,
-                            'query_idx': query_idx,
-                            'num_matches': num_matches,
-                            'num_inliers': num_inliers
-                        })
-                        csvfile.flush()  # ensure data is written
+                # Save result immediately
+                writer.writerow({
+                    'anchor_idx': anchor_idx,
+                    'query_idx': query_idx,
+                    'num_matches': num_matches,
+                    'num_inliers': num_inliers
+                })
+                csvfile.flush()  # ensure data is written
 
-                        # Save processed pair
-                        save_processed_pair(args.temp_file, anchor_idx, query_idx)
+                # Save processed pair
+                save_processed_pair(args.temp_file, anchor_idx, query_idx)
 
-                    except Exception as e:
-                        tqdm.write(f"Error processing anchor {anchor_idx}, query {query_idx}: {e}")
+            except Exception as e:
+                tqdm.write(f"Error processing anchor {anchor_idx}, query {query_idx}: {e}")
 
     print(f"Saved all results to {args.output}")
     df = pd.read_csv(args.output)
+    # Add anchor_range column
+    df['anchor_range'] = None
+    for k, v in anchor_query_dict.items():
+        df.loc[(df['anchor_idx'] >= k[0]) & (df['anchor_idx'] < k[1]), 'anchor_range'] = str(k)
 
-    # Sort so the highest inliers come first for each (query_idx, anchor_seq)
-    sorted_df = df.sort_values(['query_idx', 'anchor_seq', 'num_inliers'], ascending=[True, True, False])
+    # Sort so the highest inliers come first for each query_idx and anchor_range
+    sorted_df = df.sort_values(['query_idx', 'anchor_range', 'num_inliers'], ascending=[True, True, False])
 
-    # For each (query_idx, anchor_seq), keep the top N anchors (anchor_idx) with the most inliers
-    topN_anchors_per_query_per_anchorseq = sorted_df.groupby(['query_idx', 'anchor_seq']).head(args.top_n)
+    # For each query_idx and anchor_range, keep the top N anchors (anchor_idx) with the most inliers
+    topN_anchors_per_query = sorted_df.groupby(['query_idx', 'anchor_range']).head(args.top_n)
 
     # Save to CSV
-    topN_csv = os.path.splitext(args.output)[0] + f'_top{args.top_n}_anchors_per_query_per_anchorseq.csv'
-    topN_anchors_per_query_per_anchorseq.to_csv(topN_csv, index=False)
-    print(f"Saved top {args.top_n} anchors per query per anchor sequence to {topN_csv}")
+    topN_csv = os.path.splitext(args.output)[0] + f'_top{args.top_n}_anchors_per_query.csv'
+    topN_anchors_per_query.to_csv(topN_csv, index=False)
+    print(f"Saved top {args.top_n} anchors per query to {topN_csv}")
 
 
 if __name__ == "__main__":
     main()
-
