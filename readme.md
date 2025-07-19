@@ -17,7 +17,9 @@ python my_scripts/mining.py --dataset_scene spagna --anchor_query_json /home/bja
 
 ```
 
-
+```
+python my_scripts/mining.py --dataset_scene campus --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/campus.json --anchor_step 10 --query_step 20 --output results_campus/campus_matches_inliers_fm.csv --top_n 3 --temp_file results_campus/processed_pairs.txt
+```
 
 - Results include the number of matches and inliers for each pair, saved to the specified output file.
 - Sorted pairs (queries matched to their top N anchors) are saved to `{output}_{top_n}.csv`.
@@ -75,6 +77,18 @@ python my_scripts/evaluate_v2.py \
   --min_inliers 200 \
   --temp_file results_step50v2/spagna_processed_pairs.txt
 ```
+
+```
+python my_scripts/evaluate_v2.py \
+  --dataset_scene campus \
+  --pairs_csv results_campus/campus_matches_inliers_fm_top3_anchors_per_query.csv \
+  --output_prefix results_campusv1/campus \
+  --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
+  --min_inliers 200 \
+  --temp_file results_campusv1/campus_processed_pairs.txt
+```
+
+
 
 ```
 python my_scripts/evaluate.py \

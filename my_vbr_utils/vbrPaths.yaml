@@ -8,7 +8,8 @@ vbr_datasets:
         gt_path: "campus/campus_train0/campus_train0_gt.txt"
       - name: "campus_train1"
         kitti_path: "campus/campus_train1_kitti"
-        gt_path: "/home/bjangley/VPR/mast3r-v2/my_vbr_utils/local_frame_alignment/campus_train1_gt.txt"
+        gt_path: "campus/campus_train1/campus_train1_gt.txt"
+        # gt_path: "/home/bjangley/VPR/mast3r-v2/my_vbr_utils/local_frame_alignment/campus_train1_gt.txt"
     test:
       - name: "campus_test0"
         kitti_path: "campus/campus_test0_kitti"

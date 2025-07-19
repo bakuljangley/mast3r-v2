@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .mast3r_utils import pose_to_se3
+from .transformations import pose_to_se3
 def load_pose_results(filename):
     data = np.loadtxt(filename)
     return [row for row in data if len(row) == 9]

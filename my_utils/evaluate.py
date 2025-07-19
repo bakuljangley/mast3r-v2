@@ -1,11 +1,11 @@
 import pandas as pd
 
-def load_statistics(pointcloud_type, base_path):
+def load_statistics(pointcloud_type, base_path, scene_name):
     """
     Load statistics for a specified point cloud type.
     Auto-detects column structure from the data.
     """
-    statistics_file = f"{base_path}/spagna_{pointcloud_type}_statistics.txt"
+    statistics_file = f"{base_path}/{scene_name}_{pointcloud_type}_statistics.txt"
     try:
         df_temp = pd.read_csv(statistics_file, delim_whitespace=True, header=None)
         num_columns = len(df_temp.columns)
