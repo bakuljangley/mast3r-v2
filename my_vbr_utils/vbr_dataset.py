@@ -333,7 +333,7 @@ class vbrInterpolatedDataset:
         return np.concatenate([interpolated_translation, interpolated_rotation])
 
     def interpolate_lidar(self, img_time):
-        diffs = np.array(self.lidar_timestamps) - img_time
+        # diffs = np.array(self.lidar_timestamps) - img_time
         # idx_before = np.where(diffs <= 0, diffs, -np.inf).argmax()
         # idx_after = np.where(diffs > 0, diffs, np.inf).argmin()
         # if idx_before == -np.inf or idx_after == np.inf:
@@ -356,14 +356,15 @@ class vbrInterpolatedDataset:
         # interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
         
         # return interpolated_xyz
-        idx = diffs.argmin()
+        diffs = np.abs(np.array(self.lidar_timestamps) - img_time)
+        idx   = diffs.argmin()
         if diffs[idx] > self.max_time_diff:
             return None
-
+        # print(self.lidar_files[idx])
         # Read the structured LiDAR data correctly
         lidar_data = np.fromfile(self.lidar_files[idx], dtype=self.lidar_dtype)
         # Extract x, y, z coordinates from structured arrays
-        xyz = np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
+        xyz = np.stack([lidar_data['x'], lidar_data['y'], lidar_data['z']], axis=-1)
         return xyz
 
     def slerp(self, q1, q2, alpha):

@@ -126,11 +126,10 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
             for method, stat_len, output_file in method_specs:
                 save_failed_result(output_file, query_idx, anchor_idx, n_matches, n_inliers, np.nan, stat_len)
             return
-        
-        print(K,"\n",T_cam_lidar)
-
         K_new, depth_map, scene_map = get_intrinsics_and_maps(anchor, K, T_cam_lidar)
+        print(inlier_im0, "\n", depth_map)
         matched_idx, valid_lidar_uv = get_overlap_points(inlier_im0, depth_map)
+        print(matched_idx,"\n",valid_lidar_uv)
         # Track number of overlapping points
         n_overlapping = len(matched_idx)
         if inlier_im0.size == 0 or matched_idx.size==0:
