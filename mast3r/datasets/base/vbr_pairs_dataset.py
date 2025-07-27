@@ -5,23 +5,23 @@ import yaml
 from scipy.spatial.transform import Rotation as R
 from .mast3r_base_stereo_view_dataset import MASt3RBaseStereoViewDataset
 
-class VBRPairsDataset(MASt3RBaseStereoViewDataset):
-    def __init__(self, root_dir, split, pairs_txt, calib_yaml, poses_txt, depth_dir, **kwargs):
-        super().__init__(**kwargs)
 
-        self.root_dir = Path(root_dir)
-        self.image_dir = self.root_dir / "camera_left/data"
-        self.depth_dir = Path(depth_dir)
-        self.calib = self._load_calibration(calib_yaml)
-        # Configure split
-        if split == "train":
-            self.split = "train"
-        elif split == "test":
-            self.split = "test"
-        else:
-            raise ValueError(f"Unknown split: {split}")
-        self.pose_values = np.loadtxt(poses_txt, comments="#")
-        self.pairs = self._load_pairs(pairs_txt, self.split)
+def get_paths_from_scene(scene, img_root, depth_root, pose_root):
+    depth_dir = Path(depth_root)/f"{scene}"
+    scene_name = scene.split("_")[0]
+    img_dir = Path(img_root)/f"{scene_name}"/f"{scene}_kitti/camera_left/data"
+    pose_dir = Path(pose_root)/f"{scene}.txt" #poses_path
+    calib_path = Path (img_root)/f"{scene_name}"/f"{scene}"/f"vbr_calib.yaml"
+    return img_dir, depth_dir, pose_dir, calib_path
+
+
+class VBRPairsDataset(MASt3RBaseStereoViewDataset):
+    def __init__(self, root_dir, scene, split, pairs_dir, depth_dir, pose_dir, **kwargs):
+        super().__init__(**kwargs)
+        self.image_dir, self.depth_dir, self.poses_txt, self.calib_path = get_paths_from_scene(scene, root_dir, depth_dir, pose_dir)
+        self.calib = self._load_calibration(self.calib_path)
+        self.pose_values = np.loadtxt(self.poses_txt, comments="#")
+        self.pairs = self._load_pairs(pairs_dir, scene, split)
         self.num_views = 2
         self.is_metric_scale = True #overwrite the metric scale flag
 
@@ -32,12 +32,11 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
         anchor_idx, query_idx = self.pairs[idx]
         return [self._view(anchor_idx), self._view(query_idx)]
     
-    def _load_pairs(self, pairs_txt, split):
+    def _load_pairs(self, pairs_dir, scene, split): 
         """
-        Load pairs based on the split.
+        Load pairs based on the scene and split.
         """
-        print(pairs_txt)
-        pairs_path = Path(pairs_txt) / f"{split}_pairs.txt"
+        pairs_path = Path(pairs_dir) / f"{scene}" /f"{split}_pairs.txt"
         print(pairs_path)
         if not pairs_path.exists():
             raise FileNotFoundError(f"Pairs file for split '{split}' not found: {pairs_path}")
@@ -51,7 +50,7 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
         depth = np.load(depth_path).astype(np.float32)
         depth[~np.isfinite(depth)] = 0.0
         T_cam_lidar = self.calib['cam_l']['T_cam_lidar'].astype(np.float32)
-        pose = T_cam_lidar @ self._pose(idx)
+        pose = np.linalg.inv(T_cam_lidar @ np.linalg.inv(self._pose(idx)))
         K = self.calib['cam_l']['K'].astype(np.float32)
 
         return {

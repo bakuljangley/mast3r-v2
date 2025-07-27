@@ -71,11 +71,18 @@ def compute_scaled_points(method, master_pts, lidar_pts):
             scaled_pts = master_pts * scale
 
         elif method in ['l1_axis', 'v4']:
-            c_m = np.mean(master_pts, axis=0)
-            c_l = np.mean(lidar_pts, axis=0)
-            if np.any(np.abs(c_m) < 1e-6):
-                return None, None
-            scale = np.abs(c_l) / np.abs(c_m)
+            # Compute the norm (average distance to origin) per axis
+            norm_m = np.mean(np.abs(master_pts), axis=0)
+            norm_l = np.mean(np.abs(lidar_pts), axis=0)
+
+            # Handle cases where master_pts has zero norm on an axis
+            scale = np.zeros_like(norm_m)
+            for i in range(3):
+                if norm_m[i] < 1e-6:
+                    return None, None  # Or another default value, like 0.0 or np.nan
+                else:
+                    scale[i] = norm_l[i] / norm_m[i]
+            # Apply the per-axis scaling
             scaled_pts = master_pts * scale
 
         elif method in ['icp', 'umeyama']:

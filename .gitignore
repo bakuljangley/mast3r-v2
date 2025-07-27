@@ -131,15 +131,12 @@ dmypy.json
 
 #model checkpoints
 checkpoints/
-
+checkpoints_v1/
 
 #ignore specific folders
-results/
-results_full2/
-results_step50_v2/
-results_step50v2/
-results_step50v3/
-results_step50v4/
-results_campus/
-results_campusv1/
-results_campusv2/
+
+pairs_finetuning/
+results_finetuning/
+
+pairs_mining/
+results_localization/

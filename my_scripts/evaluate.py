@@ -10,7 +10,7 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from my_vbr_utils.vbr_dataset import vbrDataset, load_calibration
+from my_vbr_utils.vbr_dataset import VBRDataset, load_scene_calibration
 from my_utils.my_vbr_dataset import generate_depth_and_scene_maps
 from my_utils.mast3r_utils import (
     get_master_output, get_mast3r_image_shape, scale_intrinsics, overlap,
@@ -18,15 +18,17 @@ from my_utils.mast3r_utils import (
 )
 from my_utils.scaling import scale_pnp, compute_scaled_points
 from my_utils.transformations import pose_to_se3, se3_to_pose
+
+
+CONFIG_PATH = "/home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbrPaths.yaml"
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Estimate poses from anchor-query pairs CSV.")
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--gt', type=str, required=True)
-    parser.add_argument('--calib', type=str, required=True)
-    parser.add_argument('--pairs_csv', type=str, required=True, help='CSV with anchor_idx,query_idx')
+    parser.add_argument('--dataset_scene', type=str, required=True)
+    parser.add_argument('--pairs_path', type=str, required=True, help='txt file with anchor_index, query_index')
     parser.add_argument('--output_prefix', type=str, default='estimates')
-    parser.add_argument('--device', type=str, default='cuda:4')
-    parser.add_argument('--model_name', type=str, default="naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric")
+    parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--model_path', type=str)
     parser.add_argument('--min_inliers', type=int, default=200, help='Minimum inliers required for a match to be valid')
     parser.add_argument('--temp_file', type=str, required=True, help='File to log pairs that have already been processed')
     return parser.parse_args()
@@ -58,7 +60,6 @@ def save_result(output_file, query_idx, anchor_idx, pose, statistics, status="OK
     stats_file = output_file.replace(".txt", "_statistics.txt")
     stats_row = [query_idx, anchor_idx] + list(statistics) + [status]
     
-
     # Adjust format specifier to match the number of elements in stats_row
     stats_fmt = " ".join(["%.6f"] * (len(stats_row)-1) + ["%s"])  # Add "%s" for the status string
     with open(stats_file, "a") as f:
@@ -116,26 +117,27 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
         method_specs = [
             ('mast3r', 11, f"{args.output_prefix}_mast3r.txt"),
             ('lidar', 10, f"{args.output_prefix}_lidar.txt"),
-            ('v3', 12, f"{args.output_prefix}_mast3r_scaled_v3.txt"),
-            ('v4', 14, f"{args.output_prefix}_mast3r_scaled_v4.txt"),
-            ('icp', 12, f"{args.output_prefix}_mast3r_scaled_icp.txt"),
+            # ('v3', 12, f"{args.output_prefix}_mast3r_scaled_v3.txt"),
+            # ('v4', 14, f"{args.output_prefix}_mast3r_scaled_v4.txt"),
+            # ('icp', 12, f"{args.output_prefix}_mast3r_scaled_icp.txt"),
         ]
 
         if n_inliers <= args.min_inliers or inlier_im0.size == 0:
             for method, stat_len, output_file in method_specs:
                 save_failed_result(output_file, query_idx, anchor_idx, n_matches, n_inliers, np.nan, stat_len)
             return
-        print(anchor)
         K_new, depth_map, scene_map = get_intrinsics_and_maps(anchor, K, T_cam_lidar)
+        # print(inlier_im0, "\n", depth_map)
         matched_idx, valid_lidar_uv = get_overlap_points(inlier_im0, depth_map)
+        # print(matched_idx,"\n",valid_lidar_uv)
         # Track number of overlapping points
         n_overlapping = len(matched_idx)
         if inlier_im0.size == 0 or matched_idx.size==0:
             for method, stat_len, output_file in method_specs:
                 save_failed_result(output_file, query_idx, anchor_idx, n_matches, n_inliers, np.nan, stat_len)
             return
-        inlier_im0 = inlier_im0[matched_idx]
-        inlier_im1 = inlier_im1[matched_idx]
+        inlier_im0_full = inlier_im0[matched_idx]
+        inlier_im1_lidar = inlier_im1[matched_idx]
         mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
         lidar_pts = scene_map[valid_lidar_uv[:, 1], valid_lidar_uv[:, 0]]
 
@@ -159,7 +161,7 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
             if method == 'mast3r':
                 T = solve_pnp(mast3r_pts, inlier_im1, K_new)
             elif method == 'lidar':
-                T = solve_pnp(lidar_pts, inlier_im1, K_new)
+                T = solve_pnp(lidar_pts, inlier_im1_lidar, K_new)
             else:
                 scaled_pts, scale, T = scale_pnp(method, mast3r_pts, lidar_pts, inlier_im1, K_new)
 
@@ -191,23 +193,30 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
             save_failed_result(output_file, query_idx, anchor_idx, np.nan, np.nan, np.nan, stat_len)
 def main():
     args = parse_args()
-    dataset = vbrDataset(args.dataset, args.gt)
-    calib = load_calibration(args.calib)
+    all_loaded = VBRDataset(CONFIG_PATH,scenes=[args.dataset_scene])
+    dataset = all_loaded.get_combined_dataset()
+    scene =  args.dataset_scene.split("_")[0]
+    calib = load_scene_calibration(location_name=scene, config_path=CONFIG_PATH)
     K = calib['cam_l']['K']
     T_base_cam = calib['cam_l']['T_base_cam']
     T_cam_lidar = calib['cam_l']['T_cam_lidar']
 
     from mast3r.model import AsymmetricMASt3R
-    model = AsymmetricMASt3R.from_pretrained(args.model_name).to(args.device)
+    model_path = args.model_path
+    model = AsymmetricMASt3R.from_pretrained(model_path).to(args.device)
 
-    pairs_df = pd.read_csv(args.pairs_csv)
+    # Read anchor and query indices from the txt file
+    pairs = []
+    with open(args.pairs_path, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                anchor_idx, query_idx = int(parts[0]), int(parts[1])
+                pairs.append((anchor_idx, query_idx))
+
     processed_pairs = load_processed_pairs(args.temp_file)
 
-    for _, row in tqdm(pairs_df.iterrows(), total=len(pairs_df), desc="Estimating poses"):
-        anchor_idx, query_idx = int(row['anchor_idx']), int(row['query_idx'])
-        n_matches, n_inliers = int(row['num_matches']), int(row['num_inliers'])
-        if n_inliers<=args.min_inliers:
-                continue
+    for anchor_idx, query_idx in tqdm(pairs, total=len(pairs), desc="Estimating poses"):
         if (anchor_idx, query_idx) in processed_pairs:
             continue  # skip already processed
         anchor = dataset[anchor_idx]

@@ -1,17 +1,16 @@
 #!/bin/bash
 
 # --- User Configurable Paths ---
-ROOT="/datasets/vbr_slam/spagna/spagna_train0_kitti"
-CALIB_YAML="/datasets/vbr_slam/spagna/spagna_train0/vbr_calib.yaml"
-POSES="/home/bjangley/VPR/vbr_depthmaps/spagna_gt.txt"
-PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairsVBR/spagna"
-DEPTH_DIR="/home/bjangley/VPR/vbr_depthmaps"
-CHECKPOINT="checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
+ROOT="/datasets/vbr_slam/"
+PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/"
+DEPTH_DIR="/home/bjangley/VPR/vbr_final/depths"
+POSE_DIR="/home/bjangley/VPR/vbr_final/poses"
 
-
+SCENE_TRAIN="ciampino_train0"
+SCENE_TEST="ciampino_train1"
 # --- Dataset Arguments ---
-TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT', split='train', pairs_txt='$PAIRS_PATH', calib_yaml='$CALIB_YAML', poses_txt='$POSES', depth_dir='$DEPTH_DIR', resolution=[(512,384)], n_corres=1000, aug_crop=False)"
-TEST_DATASET="VBRPairsDataset(root_dir='$ROOT', split='test', pairs_txt='$PAIRS_PATH', calib_yaml='$CALIB_YAML', poses_txt='$POSES', depth_dir='$DEPTH_DIR', resolution=[(512,384)], n_corres=1000, aug_crop=False)"
+TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512,256)], aug_crop=False)"
+TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TEST', split='test', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512,256)], aug_crop=False)"
 
 # --- Loss Function ---
 TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True), alpha=0.2)"
@@ -48,9 +47,9 @@ WARMUP_EPOCHS=0
 SAVE_FREQ=1
 KEEP_FREQ=5
 EVAL_FREQ=1
-CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=4
 # --- Output Directory ---
-OUTPUT_DIR_CHECKPOINTS="checkpoints/mast3r_vbr_spagna2"
+OUTPUT_DIR_CHECKPOINTS="checkpoints/ciampino_train0_ciampino_train1"
 
 # --- Launch Training ---
 torchrun --nproc_per_node=1 --master_port=29501 train.py \
