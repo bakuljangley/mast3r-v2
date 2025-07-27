@@ -3,6 +3,15 @@ import json
 import numpy as np
 import pandas as pd
 import yaml
+from pathlib import Path
+
+def get_paths_from_scene(root,scene):
+    scene_name = scene.split("_")[0]
+    img_dir = Path(root)/f"{scene_name}"/f"{scene}_kitti/"
+    lidar_dir = Path(root)/f"{scene_name}"/f"{scene}_kitti/ouster_points"
+    calib_path = Path (root)/f"{scene_name}"/f"{scene}"/f"vbr_calib.yaml"
+    gt_poses = Path(root)/f"{scene_name}"/f"{scene}"/f"{scene}_gt.txt"
+    return img_dir, gt_poses, lidar_dir, calib_path
 
 class vbrDataset:
     # ROS2 PointField datatype code → NumPy dtype string
@@ -17,12 +26,13 @@ class vbrDataset:
         8: 'f8',   # FLOAT64
     }
 
-    def __init__(self, root_dir, pose_file, max_time_diff=0.1):
+    def __init__(self, dataset_root_dir, scene_name, max_time_diff=0.1, camera_mode = 'left',verbose=True):
+        root_dir, gt_poses, lidar_dir, _ = get_paths_from_scene(dataset_root_dir,scene_name)
         self.root_dir      = root_dir
         self.max_time_diff = max_time_diff  # in seconds
 
         # ── 1) BUILD LIDAR DTYPE FROM metadata.json ─────────────────────────
-        meta_path = os.path.join(root_dir, 'ouster_points', '.metadata.json')
+        meta_path = lidar_dir/'.metadata.json'
         with open(meta_path, 'r') as f:
             meta = json.load(f)
 
@@ -37,64 +47,75 @@ class vbrDataset:
         minimal_sz = last_off + np.dtype(last_fmt).itemsize
 
         # list all .bin files so we can auto-detect true point_step
-        lidar_data_dir    = os.path.join(root_dir, 'ouster_points', 'data')
-        self.lidar_files  = sorted(
-            os.path.join(lidar_data_dir, fn)
-            for fn in os.listdir(lidar_data_dir) if fn.endswith('.bin')
+        lidar_data_dir    = lidar_dir/'data'
+        self.lidar_files = sorted(
+            [str(fn) for fn in lidar_data_dir.glob('*.bin')]
         )
         if not self.lidar_files:
             raise RuntimeError(f"No .bin files found in {lidar_data_dir}")
 
-        # inspect the first file’s size, bump itemsize until it divides evenly
         filesize = os.path.getsize(self.lidar_files[0])
         itemsize = minimal_sz
         while filesize % itemsize != 0:
             itemsize += 1
 
-        # final structured dtype
         self.lidar_dtype = np.dtype({
-            'names':    names,
-            'formats':  formats,
-            'offsets':  offsets,
+            'names': names,
+            'formats': formats,
+            'offsets': offsets,
             'itemsize': itemsize
         })
 
-
-        # ── 2) LOAD LiDAR TIMESTAMPS ────────────────────────────────────────
-        ts_path = os.path.join(root_dir, 'ouster_points', 'timestamps.txt')
+        # ── Load Timestamps ──
+        ts_path = lidar_dir / 'timestamps.txt'
         self.lidar_timestamps = [
             pd.to_datetime(line).timestamp()
             for line in open(ts_path).read().splitlines()
         ]
 
-        # ── 3) LOAD IMAGE TIMESTAMPS ────────────────────────────────────────
-        img_ts = os.path.join(root_dir, 'camera_left', 'timestamps.txt')
+        if len(self.lidar_timestamps) != len(self.lidar_files):
+            raise ValueError(f"Mismatch: {len(self.lidar_timestamps)} lidar timestamps but {len(self.lidar_files)} lidar files")
+
+        # ── Load Camera Data Based on Mode ──
+        if camera_mode == 'left':
+            img_ts_path = root_dir / 'camera_left' / 'timestamps.txt'
+            img_data_dir = root_dir / 'camera_left' / 'data'
+        elif camera_mode == 'right':
+            img_ts_path = root_dir.parent.parent / 'camera_right' / 'timestamps.txt'
+            img_data_dir = root_dir.parent.parent / 'camera_right' / 'data'
+        else:
+            raise ValueError(f"Invalid camera_mode: {camera_mode}. Must be 'left' or 'right'")
+
+        # Load timestamps and files for selected camera
         self.image_timestamps = [
             pd.to_datetime(line).timestamp()
-            for line in open(img_ts).read().splitlines()
+            for line in open(img_ts_path).read().splitlines()
         ]
-        # Left image paths
-        img_left_dir = os.path.join(root_dir, 'camera_left', 'data')
-        self.image_files_left = sorted(
-            [os.path.join(img_left_dir, fn) for fn in os.listdir(img_left_dir) if fn.endswith('.png')],
-            key=lambda x: int(os.path.basename(x).split('.')[0])
+
+        self.image_files = sorted(
+            [str(fn) for fn in img_data_dir.glob('*.png')]
         )
 
+        # ── VALIDATION ──
+        if len(self.image_timestamps) != len(self.image_files):
+            raise ValueError(f"Mismatch: {len(self.image_timestamps)} image timestamps but {len(self.image_files)} image files")
+        
+        if len(self.lidar_timestamps) != len(self.lidar_files):
+            raise ValueError(f"Mismatch: {len(self.lidar_timestamps)} lidar timestamps but {len(self.lidar_files)} lidar files")
 
-        # Right image paths
-        img_right_dir = os.path.join(root_dir, 'camera_right', 'data')
-        self.image_files_right = sorted(
-            [os.path.join(img_right_dir, fn) for fn in os.listdir(img_right_dir) if fn.endswith('.png')],
-            key=lambda x: int(os.path.basename(x).split('.')[0])
-)
-        # ── 4) LOAD POSES ───────────────────────────────────────────────────
+        # ── Load Poses ──
         self.poses = pd.read_csv(
-            pose_file,
+            gt_poses,
             sep=r"\s+",
             comment='#',
-            names=['timestamp','tx','ty','tz','qx','qy','qz','qw']
+            names=['timestamp', 'tx', 'ty', 'tz', 'qx', 'qy', 'qz', 'qw']
         )
         self.pose_timestamps = self.poses['timestamp'].values
+
+        if verbose:
+            print("Loaded vbrInterpolatedDataset from scene: ", scene_name)
+            print("Images loaded from: ", img_data_dir)
+            print("Ground Truth Poses: ", gt_poses)
 
 
     def __len__(self):
@@ -138,8 +159,7 @@ class vbrDataset:
             pose = np.array([-1, -1, -1, -1, -1, -1, -1])
 
         return {
-            'image':  self.image_files_left[idx],
-            'image_right': self.image_files_right[idx],
+            'image':  self.image_files[idx],
             'lidar_points': lidar_pts,
             'pose':         pose,
             'timestamp':    img_time
@@ -158,30 +178,6 @@ class vbrDataset:
             lidar_pts = np.stack([raw['x'], raw['y'], raw['z']], axis=-1)
         return lidar_pts
 
-
-
-    def get_image_lidar_pose_stats(self):
-        with_lidar = []
-        with_pose  = []
-        with_both  = []
-
-        for i in range(len(self)):
-            has_l = (self.get_closest_lidar(self.image_timestamps[i]) is not None)
-            has_p = (self.get_closest_pose(self.image_timestamps[i]) is not None)
-            if has_l: with_lidar.append(i)
-            if has_p: with_pose.append(i)
-            if has_l and has_p:
-                with_both.append(i)
-
-        return {
-            "count_with_lidar": len(with_lidar),
-            "images_with_lidar": with_lidar,
-            "count_with_pose":  len(with_pose),
-            "images_with_pose": with_pose,
-            "count_with_both":  len(with_both),
-            "images_with_both": with_both,
-        }
-    
     def get_local_trajectory_array(self):
         """
         Returns a NumPy array of shape (N_valid, 8), where each row is:
@@ -213,12 +209,13 @@ class vbrInterpolatedDataset:
         8: 'f8',   # FLOAT64,
     }
 
-    def __init__(self, root_dir, pose_file, max_time_diff=0.1, camera_mode='left'):
+    def __init__(self, dataset_root_dir, scene_name, max_time_diff=0.1, camera_mode='left', verbose=True):
+        root_dir, gt_poses, lidar_dir, _ = get_paths_from_scene(dataset_root_dir,scene_name)
         self.root_dir = root_dir
         self.max_time_diff = max_time_diff
         self.camera_mode = camera_mode
         # ── Load LiDAR Metadata ──
-        meta_path = os.path.join(root_dir, 'ouster_points', '.metadata.json')
+        meta_path = lidar_dir/'.metadata.json'
         with open(meta_path, 'r') as f:
             meta = json.load(f)
 
@@ -232,10 +229,10 @@ class vbrInterpolatedDataset:
         last_fmt = formats[offsets.index(last_off)]
         minimal_sz = last_off + np.dtype(last_fmt).itemsize
 
-        lidar_data_dir = os.path.join(root_dir, 'ouster_points', 'data')
+        lidar_data_dir = lidar_dir/'data'
+        lidar_data_dir = lidar_dir / 'data'
         self.lidar_files = sorted(
-            os.path.join(lidar_data_dir, fn)
-            for fn in os.listdir(lidar_data_dir) if fn.endswith('.bin')
+            [str(fn) for fn in lidar_data_dir.glob('*.bin')]
         )
         if not self.lidar_files:
             raise RuntimeError(f"No .bin files found in {lidar_data_dir}")
@@ -253,7 +250,7 @@ class vbrInterpolatedDataset:
         })
 
         # ── Load Timestamps ──
-        ts_path = os.path.join(root_dir, 'ouster_points', 'timestamps.txt')
+        ts_path = lidar_dir / 'timestamps.txt'
         self.lidar_timestamps = [
             pd.to_datetime(line).timestamp()
             for line in open(ts_path).read().splitlines()
@@ -264,11 +261,11 @@ class vbrInterpolatedDataset:
 
         # ── Load Camera Data Based on Mode ──
         if camera_mode == 'left':
-            img_ts_path = os.path.join(root_dir, 'camera_left', 'timestamps.txt')
-            img_data_dir = os.path.join(root_dir, 'camera_left', 'data')
+            img_ts_path = root_dir / 'camera_left' / 'timestamps.txt'
+            img_data_dir = root_dir / 'camera_left' / 'data'
         elif camera_mode == 'right':
-            img_ts_path = os.path.join(root_dir, 'camera_right', 'timestamps.txt')
-            img_data_dir = os.path.join(root_dir, 'camera_right', 'data')
+            img_ts_path = root_dir.parent.parent / 'camera_right' / 'timestamps.txt'
+            img_data_dir = root_dir.parent.parent / 'camera_right' / 'data'
         else:
             raise ValueError(f"Invalid camera_mode: {camera_mode}. Must be 'left' or 'right'")
 
@@ -279,8 +276,7 @@ class vbrInterpolatedDataset:
         ]
 
         self.image_files = sorted(
-            [os.path.join(img_data_dir, fn) for fn in os.listdir(img_data_dir) if fn.endswith('.png')],
-            key=lambda x: int(os.path.basename(x).split('.')[0])
+            [str(fn) for fn in img_data_dir.glob('*.png')]
         )
 
         # ── VALIDATION ──
@@ -292,18 +288,17 @@ class vbrInterpolatedDataset:
 
         # ── Load Poses ──
         self.poses = pd.read_csv(
-            pose_file,
+            gt_poses,
             sep=r"\s+",
             comment='#',
             names=['timestamp', 'tx', 'ty', 'tz', 'qx', 'qy', 'qz', 'qw']
         )
         self.pose_timestamps = self.poses['timestamp'].values
 
-        # ── Print dataset statistics for verification ──
-        # print(f"Dataset loaded successfully:")
-        # print(f"  - Images: {len(self.image_timestamps)}")
-        # print(f"  - LiDAR scans: {len(self.lidar_timestamps)}")
-        # print(f"  - Poses: {len(self.poses)}")
+        if verbose:
+            print("Loaded vbrInterpolatedDataset from scene: ", scene_name)
+            print("Images loaded from: ", img_data_dir)
+            print("Ground Truth Poses: ", gt_poses)
 
     def __len__(self):
         ## Returns the number of images we have by timestamps
@@ -354,7 +349,6 @@ class vbrInterpolatedDataset:
         # xyz_after = np.column_stack([lidar_after['x'], lidar_after['y'], lidar_after['z']])
         # # Interpolate the xyz coordinates
         # interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
-        
         # return interpolated_xyz
         diffs = np.abs(np.array(self.lidar_timestamps) - img_time)
         idx   = diffs.argmin()
@@ -434,14 +428,15 @@ class vbrInterpolatedDataset:
     
 
 class CombinedDataset:
-    def __init__(self, datasets):
+    def __init__(self, scene_names, root_dir, max_time_diff=0.1, camera_mode='left'):
         """
-        Initialize the CombinedDataset with a list of vbrInterpolatedDataset instances.
-        Args:
-            datasets: List of vbrInterpolatedDataset instances to combine.
+        Initialize the CombinedDataset with a list of scene names and a root directory.
         """
-        self.datasets = datasets
-        self.lengths = [len(dataset) for dataset in datasets]
+        self.datasets = [
+            vbrInterpolatedDataset(root_dir, scene_name, max_time_diff, camera_mode)
+            for scene_name in scene_names
+        ]
+        self.lengths = [len(dataset) for dataset in self.datasets]
         self.cumulative_lengths = np.cumsum([0] + self.lengths)
         self.total_length = sum(self.lengths)
 
@@ -452,10 +447,6 @@ class CombinedDataset:
     def __getitem__(self, idx):
         """
         Retrieve a sample from the combined datasets based on the global index.
-        Args:
-            idx: Global index across all datasets.
-        Returns:
-            Sample dictionary from the corresponding dataset.
         """
         if idx < 0 or idx >= self.total_length:
             raise IndexError(f"Index {idx} out of range for CombinedDataset with {self.total_length} samples")
@@ -508,229 +499,7 @@ class CombinedDataset:
         dataset_idx = np.searchsorted(self.cumulative_lengths[1:], idx, side='right')
         local_idx = idx - self.cumulative_lengths[dataset_idx]
         return self.datasets[dataset_idx].get_pose(local_idx)
-
-
-
-class VBRDataset:
-    def __init__(self, config_path, root_dir=None, scenes=None, locations=None, load_all=False):
-        """
-        Initialize VBR dataset manager with flexible loading options.
-        
-        Args:
-            config_path: Path to the YAML configuration file
-            root_dir: Root directory (overrides the one in config if provided)
-            scenes: List of specific scene names to load (e.g., ['campus_train0', 'spagna_train0'])
-            locations: List of locations to load all scenes from (e.g., ['campus', 'spagna'])
-            load_all: If True, load all available scenes (default: False)
-            
-        Loading Priority:
-            1. If scenes is specified, load only those scenes
-            2. If locations is specified, load all scenes from those locations
-            3. If load_all is True, load all available scenes
-            4. If none specified, load nothing (empty dataset)
-        """
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
-        
-        # Use provided root_dir or fall back to config
-        self.root_dir = root_dir or self.config['vbr_datasets']['base_path']
-        
-        # Initialize storage
-        self.datasets = {}
-        self.scene_names = []
-        
-        # Determine what to load
-        scenes_to_load = self._determine_scenes_to_load(scenes, locations, load_all)
-        
-        if not scenes_to_load:
-            print("No scenes specified to load. Use scenes=[], locations=[], or load_all=True")
-            return
-        
-        # Load the determined scenes
-        self._load_scenes(scenes_to_load)
-        
-        print(f"Loaded {len(self.datasets)} training scenes: {self.scene_names}")
     
-    def _determine_scenes_to_load(self, scenes, locations, load_all):
-        """Determine which scenes to load based on parameters."""
-        vbr_locations = {k: v for k, v in self.config['vbr_datasets'].items() if k != 'base_path'}
-        
-        # Get all available scenes from config
-        all_available_scenes = []
-        for location, splits in vbr_locations.items():
-            if 'train' in splits:
-                for dataset_info in splits['train']:
-                    all_available_scenes.append({
-                        'name': dataset_info['name'],
-                        'location': location,
-                        'kitti_path': dataset_info['kitti_path'],
-                        'gt_path': dataset_info['gt_path']
-                    })
-        
-        # Priority 1: Specific scenes
-        if scenes is not None:
-            scenes_to_load = []
-            for scene_name in scenes:
-                scene_info = next((s for s in all_available_scenes if s['name'] == scene_name), None)
-                if scene_info:
-                    scenes_to_load.append(scene_info)
-                else:
-                    print(f"Warning: Scene '{scene_name}' not found in config")
-            return scenes_to_load
-        
-        # Priority 2: Specific locations
-        if locations is not None:
-            scenes_to_load = []
-            for location in locations:
-                location_scenes = [s for s in all_available_scenes if s['location'] == location]
-                if location_scenes:
-                    scenes_to_load.extend(location_scenes)
-                else:
-                    print(f"Warning: No scenes found for location '{location}'")
-            return scenes_to_load
-        
-        # Priority 3: Load all
-        if load_all:
-            return all_available_scenes
-        
-        # Priority 4: Load nothing
-        return []
-    
-    def _load_scenes(self, scenes_to_load):
-        """Load the specified scenes."""
-        for scene_info in scenes_to_load:
-            scene_name = scene_info['name']
-            kitti_path = os.path.join(self.root_dir, scene_info['kitti_path'])
-            gt_path = os.path.join(self.root_dir, scene_info['gt_path'])
-            
-            print(f"Loading scene: {scene_name}")
-            print(f"  KITTI path: {kitti_path}")
-            print(f"  GT path: {gt_path}")
-            
-            try:
-                # Load the dataset
-                self.datasets[scene_name] = vbrInterpolatedDataset(kitti_path, gt_path)
-                self.scene_names.append(scene_name)
-                print(f"  ✓ Successfully loaded {scene_name}")
-            except Exception as e:
-                print(f"  ✗ Failed to load {scene_name}: {e}")
-                continue  # Skip this dataset and continue with others
-    
-    def __getitem__(self, scene_name):
-        """
-        Get a specific scene dataset.
-        Args:
-            scene_name: Name of the scene (e.g., 'campus_train0', 'spagna_train0')
-        Returns:
-            vbrInterpolatedDataset instance
-        """
-        if scene_name not in self.datasets:
-            raise KeyError(f"Scene '{scene_name}' not found. Available scenes: {self.scene_names}")
-        return self.datasets[scene_name]
-    
-    def get_combined_dataset(self, scene_names=None):
-        """
-        Get a combined dataset with specified scenes.
-        Args:
-            scene_names: List of scene names to combine (None for all loaded scenes)
-        Returns:
-            CombinedDataset instance
-        """
-        if scene_names is None:
-            scene_names = self.scene_names
-        
-        # Validate scene names
-        for scene_name in scene_names:
-            if scene_name not in self.datasets:
-                raise KeyError(f"Scene '{scene_name}' not found. Available scenes: {self.scene_names}")
-        
-        datasets = [self.datasets[scene_name] for scene_name in scene_names]
-        return CombinedDataset(datasets)
-    
-    def get_location_dataset(self, location):
-        """
-        Get combined dataset for all loaded scenes from a specific location.
-        Args:
-            location: Location name (e.g., 'campus', 'spagna')
-        Returns:
-            CombinedDataset instance
-        """
-        location_scenes = [name for name in self.scene_names if name.startswith(location)]
-        
-        if not location_scenes:
-            raise ValueError(f"No loaded scenes found for location '{location}'")
-        
-        return self.get_combined_dataset(location_scenes)
-    
-    def list_scenes(self):
-        """List all loaded scene names."""
-        return self.scene_names.copy()
-    
-    def list_locations(self):
-        """List all locations from loaded scenes."""
-        locations = set()
-        for scene_name in self.scene_names:
-            location = scene_name.split('_')[0]
-            locations.add(location)
-        return sorted(list(locations))
-    
-    def __len__(self):
-        """Return total number of loaded scenes."""
-        return len(self.datasets)
-    
-    def __repr__(self):
-        return f"VBRDataset({len(self.datasets)} scenes: {self.scene_names})"
-    
-
-def load_scene_calibration(location_name, config_path):
-    """
-    Loads and returns the calibration dictionary for the given location.
-    If multiple scenes exist for the location, defaults to train0.
-    Args:
-        location_name: e.g. 'spagna'
-        config_path: path to vbrPaths.yaml
-    Returns:
-        calib: dict loaded from vbr_calib.yaml
-    """
-    # Load the config file
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-
-    base_path = config['vbr_datasets']['base_path']
-    # Find the location and split for the scene
-    if location_name in config['vbr_datasets']:
-        splits = config['vbr_datasets'][location_name]
-        if 'train' in splits:
-            # Default to train0 if it exists
-            train0_scene = next((s for s in splits['train'] if s['name'].endswith('train0')), None)
-            if train0_scene:
-                scene_name = train0_scene['name']
-                calib_path = os.path.join(
-                    base_path,
-                    location_name,
-                    scene_name,
-                    "vbr_calib.yaml"
-                )
-                return load_calibration(calib_path)
-            else:
-                # If train0 doesn't exist, take the first available train scene
-                first_train_scene = next(iter(splits['train']), None)
-                if first_train_scene:
-                    scene_name = first_train_scene['name']
-                    calib_path = os.path.join(
-                        base_path,
-                        location_name,
-                        scene_name,
-                        "vbr_calib.yaml"
-                    )
-                    return load_calibration(calib_path)
-                else:
-                    raise ValueError(f"No train scenes found for location {location_name}")
-        else:
-            raise ValueError(f"No train split found for location {location_name}")
-    else:
-        raise ValueError(f"Location {location_name} not found in config.")
-
 def load_calibration(yaml_path):
     """
     Load sensor calibration from YAML and return:

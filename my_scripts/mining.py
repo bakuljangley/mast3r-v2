@@ -15,14 +15,14 @@ import cv2
 from tqdm import tqdm
 import json
 # Import your dataset and model utilities
-from my_vbr_utils.vbr_dataset import VBRDataset, load_scene_calibration
+from my_vbr_utils.vbr_dataset import vbrInterpolatedDataset, load_calibration, get_paths_from_scene
 from my_utils.mast3r_utils import get_master_output
 
-CONFIG_PATH = "/home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbrPaths.yaml"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Mine anchor-query pairs with inlier counting.")
-    parser.add_argument('--dataset_scene', type=str, required=True, help='Path to dataset in kitti format')
+    parser.add_argument('--dataset_scene', type=str, required=True, help='Name of dataset scene')
+    parser.add_argument('--dataset_root', type=str, required=True, help='Path to dataset')
     parser.add_argument('--anchor_query_json', type=str, required=True, help='Anchor-query sequence ranges"')
     parser.add_argument('--anchor_step', type=int, default=50)
     parser.add_argument('--query_step', type=int, default=50)
@@ -83,9 +83,9 @@ def main():
     args = parse_args()
 
     # Load dataset and calibration
-    all_loaded = VBRDataset(CONFIG_PATH, locations=[args.dataset_scene])
-    dataset = all_loaded.get_combined_dataset()
-    calib = load_scene_calibration(location_name=args.dataset_scene, config_path=CONFIG_PATH)
+    dataset = vbrInterpolatedDataset(args.dataset_root, args.dataset_scene)
+    calib_path = get_paths_from_scene(args.dataset_root, args.dataset_scene)[-1]
+    calib = load_calibration(calib_path)
     from mast3r.model import AsymmetricMASt3R
     model = AsymmetricMASt3R.from_pretrained(args.model_name).to(args.device)
 

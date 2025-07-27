@@ -1,9 +1,18 @@
+### Dataset Preparation
+
+
+
 
 ### Mining Pairs Using Inlier Counting via Fundamental Matrix Estimation
 
 To generate anchor query pairs, inliers are counted using `cv2.fundamentalmatrix()` with matches from MASt3R, a feature matching algorithm. After counting inliers for all pairs from an anchor and query sequence, each query is matched to the top 3 anchors found.
 
 The fundamental matrix is used instead of homography as it 
+
+
+
+
+
 
 
 Example usage:
@@ -13,12 +22,16 @@ python mining.py --dataset_scene <dataset_scene_name> --anchor_query_json <path_
 ```
 
 ```
-python my_scripts/mining.py --dataset_scene spagna --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/spagna.json --anchor_step 50 --query_step 50 --output results_step50_v2/spagna_matches_inliers_fm.csv --top_n 3 --temp_file results_step50_v2/processed_pairs.txt
+python my_scripts/mining.py --dataset_scene spagna --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/spagnav2.json --anchor_step 50 --query_step 50 --output pairs/spagna_v2/spagna_matches_inliers_fm.csv --top_n 3 --temp_file pairs/spagna_v2/processed_pairs.txt
 
 ```
 
 ```
-python my_scripts/mining.py --dataset_scene campus --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/campus.json --anchor_step 10 --query_step 20 --output results_campus/campus_matches_inliers_fm.csv --top_n 3 --temp_file results_campus/processed_pairs.txt
+python my_scripts/mining.py --dataset_scene campus --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/campusv2.json --anchor_step 10 --query_step 20 --output pairs_campus_v2/campus_matches_inliers_fm.csv --top_n 10 --temp_file pairs_campus_v2/processed_pairs.txt
+```
+
+```
+python my_scripts/mining.py --dataset_scene ciampino --anchor_query_json /home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/ciampino.json --anchor_step 10 --query_step 20 --output results_ciampino/ciampino_matches_inliers_fm.csv --top_n 3 --temp_file results_ciampino/processed_pairs.txt
 ```
 
 - Results include the number of matches and inliers for each pair, saved to the specified output file.
@@ -67,28 +80,37 @@ python my_scripts/evaluate.py \
   --temp_file results_full/spagna_processed_pairs.txt
 ```
 
-
+/home/bjangley/VPR/mast3r-v2/pairs_campus_v2/campus_matches_inliers_fm_top3_anchors_per_query.csv
 ```bash
 python my_scripts/evaluate_v2.py \
   --dataset_scene spagna \
-  --pairs_csv results_step50_v2/spagna_matches_inliers_fm_top3_anchors_per_query.csv \
-  --output_prefix results_step50v2/spagna \
+  --pairs_csv pairs/spagna_v2/spagna_matches_inliers_fm_top10_anchors_per_query.csv \
+  --output_prefix results_localisation/spagna_pairsv2_top10/spagna \
   --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
   --min_inliers 200 \
-  --temp_file results_step50v2/spagna_processed_pairs.txt
+  --temp_file results_localisation/spagna_pairsv2_top10/spagna_processed_pairs.txt
 ```
 
 ```
 python my_scripts/evaluate_v2.py \
   --dataset_scene campus \
-  --pairs_csv results_campus/campus_matches_inliers_fm_top3_anchors_per_query.csv \
-  --output_prefix results_campusv1/campus \
+  --pairs_csv pairs_campus_v2/campus_matches_inliers_fm_top10_anchors_per_query.csv \
+  --output_prefix results_campusv3_pairsv2_top10/campus \
   --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
   --min_inliers 200 \
-  --temp_file results_campusv1/campus_processed_pairs.txt
+  --temp_file results_campusv3_pairsv2_top10/campus_processed_pairs.txt
 ```
 
+python my_scripts/evaluate_v2.py \
+  --dataset_scene ciampino \
+  --pairs_csv pairs/pairs_ciampinov1/ciampino_matches_inliers_fm_top3_anchors_per_query.csv \
+  --output_prefix results_localisation/ciampino_v1 \
+  --model_name naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric \
+  --min_inliers 200 \
+  --temp_file  results_localisation/ciampino_processed_pairs.txt
 
+
+/home/bjangley/VPR/mast3r-v2/pairs_campus_v2/campus_matches_inliers_fm_top3_anchors_per_query.csv
 
 ```
 python my_scripts/evaluate.py \
@@ -109,3 +131,13 @@ python my_scripts/evaluate.py \
 - `--pairs_csv`: CSV file with anchor-query pairs.
 - `--output_prefix`: Prefix for output files (e.g., `results2/spagna`). Results will be saved as `results2/spagna_mast3r.txt`, `results2/spagna_lidar.txt`, etc.
 - `--temp_file`: File to track processed pairs, ensuring previously processed pairs are skipped in subsequent runs.
+
+
+
+python my_scripts/evaluate.py \
+  --dataset_scene campus_train0 \
+  --pairs_path pairs_finetuning/campus_train0/test_pairs.txt \
+  --output_prefix results_finetuning/campus_train0/campus_train_0 \
+  --model_path /home/bjangley/VPR/mast3r-v2/checkpoints/campus/checkpoint-best.pth \
+  --min_inliers 200 \
+  --temp_file results_finetuning/campus_train0/campus_train_0_processed_pairs.txt

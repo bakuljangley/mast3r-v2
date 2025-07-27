@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--dataset_scene', type=str, required=True)
     parser.add_argument('--pairs_csv', type=str, required=True, help='CSV with anchor_idx,query_idx')
     parser.add_argument('--output_prefix', type=str, default='estimates')
-    parser.add_argument('--device', type=str, default='cuda:4')
+    parser.add_argument('--device', type=str, default='cuda:5')
     parser.add_argument('--model_name', type=str, default="naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric")
     parser.add_argument('--min_inliers', type=int, default=200, help='Minimum inliers required for a match to be valid')
     parser.add_argument('--temp_file', type=str, required=True, help='File to log pairs that have already been processed')
@@ -127,9 +127,9 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
                 save_failed_result(output_file, query_idx, anchor_idx, n_matches, n_inliers, np.nan, stat_len)
             return
         K_new, depth_map, scene_map = get_intrinsics_and_maps(anchor, K, T_cam_lidar)
-        print(inlier_im0, "\n", depth_map)
+        # print(inlier_im0, "\n", depth_map)
         matched_idx, valid_lidar_uv = get_overlap_points(inlier_im0, depth_map)
-        print(matched_idx,"\n",valid_lidar_uv)
+        # print(matched_idx,"\n",valid_lidar_uv)
         # Track number of overlapping points
         n_overlapping = len(matched_idx)
         if inlier_im0.size == 0 or matched_idx.size==0:

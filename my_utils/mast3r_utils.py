@@ -48,7 +48,7 @@ def overlap(matches, depth_map, max_pixel_dist=2):
     Returns:
         matched_uv:        (u,v) from original matches
         matched_lidar_uv:  nearest valid (u,v) from depth map
-        matched_indices:   indices into original match list
+        matched_indices:   indices for original match list
     """
     valid_mask = np.isfinite(depth_map)
     valid_v, valid_u = np.where(valid_mask)
