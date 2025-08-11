@@ -103,8 +103,8 @@ def save_poses(vbr_scene, output_file, T_cam_lidar):
                 # Ensure the output directory exists
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
                 pose = vbr_scene.get_pose(idx)
-                pose_cam = se3_to_pose(T_cam_lidar @ pose_to_se3(pose))
-                f.write(f"{pose_cam[0]:.6f} {pose_cam[1]:.6f} {pose_cam[2]:.6f} {pose_cam[3]:.6f} {pose_cam[4]:.6f} {pose_cam[5]:.6f} {pose_cam[6]:.6f}\n")
+                # pose_cam = se3_to_pose(T_cam_lidar @ pose_to_se3(pose))
+                f.write(f"{pose[0]:.6f} {pose[1]:.6f} {pose[2]:.6f} {pose[3]:.6f} {pose[4]:.6f} {pose[5]:.6f} {pose[6]:.6f}\n")
         # logging.info(f"Ground truth poses saved to {output_file}")
     except Exception as e:
         logging.error(f"Error saving poses to {output_file}: {e}")
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         save_pairs_to_file(train_pairs, os.path.join(scene_pairs_path, "train_pairs.txt"))
         save_pairs_to_file(val_pairs, os.path.join(scene_pairs_path, "val_pairs.txt"))
         save_pairs_to_file(test_pairs, os.path.join(scene_pairs_path, "test_pairs.txt"))
-        save_pairs_to_file(pairs, os.path.join(scene_pairs_path, "all_pairs.txt"))
+        save_pairs_to_file(pairs,    os.path.join(scene_pairs_path, "all_pairs.txt"))
 
         # --- Generate and Save Depth Maps ---
         depth_output_dir = os.path.join(args.depth_output_dir, args.dataset_scene)

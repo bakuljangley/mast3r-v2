@@ -1,12 +1,12 @@
 #!/bin/bash
 
-DATASET_SCENE="ciampino_train0"
+DATASET_SCENE="campus_train1"
 DATASET_ROOT="/datasets/vbr_slam" 
-PAIRS_FILE="/home/bjangley/VPR/mast3r-v2/pairs_mining/ciampino_train0/ciampino_matches_inliers_fm_top3_anchors_per_query.csv" 
-OUTPUT_DIR="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/ciampino_train0/"    
-DEPTH_OUTPUT_DIR="/home/bjangley/VPR/vbr_final/depths" 
-POSES_OUTPUT_DIR="/home/bjangley/VPR/vbr_final/poses"  
-MIN_INLIERS=200
+PAIRS_FILE="/home/bjangley/VPR/mast3r-v2/pairs_mining/campus_train1/campus_matches_inliers_fm_top10_anchors_per_query.csv" 
+OUTPUT_DIR="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/"    
+DEPTH_OUTPUT_DIR="/home/bjangley/VPR/vbr/depths" 
+POSES_OUTPUT_DIR="/home/bjangley/VPR/vbr/poses"  
+MIN_INLIERS=700
 TRAIN_RATIO=0.7
 VAL_RATIO=0.15
 TEST_RATIO=0.15

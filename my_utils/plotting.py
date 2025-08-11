@@ -91,3 +91,25 @@ def plot_all_estimates_for_query(query_idx, dataset, results_dicts, styles):
     ax.legend(new_handles, new_labels, loc='best')
     plt.tight_layout()
     plt.show()
+
+def show_image_pair(anchor_img, query_img, anchor_idx=None, query_idx=None, figsize=(12, 6), titles=None):
+    """
+    Display anchor and query images side by side.
+    """
+    plt.figure(figsize=figsize)
+    plt.subplot(1, 2, 1)
+    plt.imshow(query_img)
+    title = f'Query {query_idx}' if query_idx is not None else 'Query'
+    if titles and len(titles) > 0:
+        title = titles[0]
+    plt.title(title)
+    plt.axis('off')
+    plt.subplot(1, 2, 2)
+    plt.imshow(anchor_img)
+    title = f'Anchor {anchor_idx}' if anchor_idx is not None else 'Anchor'
+    if titles and len(titles) > 1:
+        title = titles[1]
+    plt.title(title)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()

@@ -42,6 +42,65 @@ def scale_intrinsics(K, prev_w, prev_h, target_w, target_h):
     K_scaled[1, 2] *= scale_h
     return K_scaled
 
+
+def recompute_intrinsics(K_orig, original_size, size, patch_size=16, square_ok=False):
+    """
+    Recompute intrinsics matrix K after resizing and cropping done by load_images.
+    
+    Parameters:
+        K_orig (np.ndarray or torch.Tensor): Original 3x3 intrinsic matrix.
+        original_size (tuple): (width, height) of original image.
+        size (int): target size used in load_images (e.g., 224 or 512).
+        patch_size (int): patch size used in load_images cropping (default 16).
+        square_ok (bool): flag controlling crop shape on square images.
+        
+    Returns:
+        K_new (np.ndarray or torch.Tensor): new 3x3 intrinsic matrix after resizing+cropping.
+    """
+    W, H = original_size
+    fx, fy = K_orig[0, 0], K_orig[1, 1]
+    cx, cy = K_orig[0, 2], K_orig[1, 2]
+
+    if size == 224:
+        # Resize so short side = 224
+        scale = 224 / min(W, H)
+        W_resized, H_resized = int(round(W * scale)), int(round(H * scale))
+
+        # Crop square 224x224 at center
+        crop_x = (W_resized - 224) // 2
+        crop_y = (H_resized - 224) // 2
+    else:
+        # Resize so long side = size
+        scale = size / max(W, H)
+        W_resized, H_resized = int(round(W * scale)), int(round(H * scale))
+
+        # crop width and height aligned to patch_size multiples
+        halfw = ( (2 * (W_resized // 2)) // patch_size ) * patch_size // 2
+        halfh = ( (2 * (H_resized // 2)) // patch_size ) * patch_size // 2
+
+        if not square_ok and (W_resized == H_resized):
+            halfh = int(3 * halfw / 4)
+
+        crop_x = (W_resized // 2) - halfw
+        crop_y = (H_resized // 2) - halfh
+
+    # Scale focal lengths and principal points
+    fx_new = fx * scale
+    fy_new = fy * scale
+    cx_new = cx * scale - crop_x
+    cy_new = cy * scale - crop_y
+
+    # Construct new intrinsic matrix
+    K_new = np.array([
+        [fx_new, 0, cx_new],
+        [0, fy_new, cy_new],
+        [0, 0, 1]
+    ], dtype=K_orig.dtype)
+
+    return K_new
+
+
+
 def overlap(matches, depth_map, max_pixel_dist=2):
     """
     For each (u, v) in matches, find the nearest valid depth pixel within max_pixel_dist.
@@ -54,7 +113,6 @@ def overlap(matches, depth_map, max_pixel_dist=2):
     valid_v, valid_u = np.where(valid_mask)
     valid_uv = np.stack((valid_u, valid_v), axis=-1)
     matched_uv, matched_lidar_uv, matched_indices = [], [], []
-
     for idx, uv in enumerate(matches):
         u, v = int(round(uv[0])), int(round(uv[1]))
         dists = np.linalg.norm(valid_uv - [u, v], axis=1)
@@ -111,7 +169,7 @@ def get_master_output(model, device, anchor_image, query_image, visualize=False,
         visualize_2d_matches(conf_im0, conf_im1, matches_im0, matches_im1, view1, view2)
 
     return (matches_im0, matches_im1,
-            pts3d_im0, pts3d_im1)
+            pts3d_im0, pts3d_im1, conf_im0, conf_im1)
 
 def visualize_2d_matches(conf_im0, conf_im1, matches_im0, matches_im1, view1, view2, n_viz=20):
     """Optional visualization of matches with confidence heatmap."""
@@ -128,16 +186,41 @@ def visualize_2d_matches(conf_im0, conf_im1, matches_im0, matches_im1, view1, vi
     H0, W0, H1, W1 = *imgs[0].shape[:2], *imgs[1].shape[:2]
     img = np.concatenate((imgs[0], imgs[1]), axis=1)
 
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.imshow(img)
-    ax.set_title('Top Matches with Confidence')
+    # --- Figure 1: Matches with connecting lines ---
+    fig1, ax1 = plt.subplots(figsize=(12, 8))
+    ax1.imshow(img)
+    ax1.set_title('Top Matches with Connecting Lines')
     for i in range(n_viz):
         (x0, y0), (x1, y1) = viz_matches_im0[i], viz_matches_im1[i]
-        ax.plot([x0, x1 + W0], [y0, y1], '-+', color=plt.cm.jet(i / n_viz))
-    divider = make_axes_locatable(ax)
+        ax1.plot([x0, x1 + W0], [y0, y1], '-+', color=plt.cm.jet(i / n_viz))
+    divider = make_axes_locatable(ax1)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=conf_im0.min(), vmax=conf_im0.max()), cmap='viridis'), cax=cax)
     plt.tight_layout()
+    plt.show()
+
+    # --- Figure 2: Matches overlaid on individual images with confidence coloring ---
+    fig2, (ax2_1, ax2_2) = plt.subplots(1, 2, figsize=(16, 8))  # Two subplots side by side
+
+    # Image 1 with matches
+    ax2_1.imshow(imgs[0])
+    ax2_1.set_title('Matches on Image 1')
+    for i in range(len(matches_im0)):
+        x0, y0 = matches_im0[i]
+        conf_val = conf_im0[y0,x0]  # Extract the scalar value
+        color = plt.cm.viridis(conf_val / conf_im0.max())  # Normalize conf to [0, 1]
+        ax2_1.plot(x0, y0, marker='o', markersize=5, color=color)
+
+    # Image 2 with matches
+    ax2_2.imshow(imgs[1])
+    ax2_2.set_title('Matches on Image 2')
+    for i in range(len(matches_im1)):
+        x1, y1 = matches_im1[i]
+        conf_val = conf_im1[y1,x1]  # Extract the scalar value
+        color = plt.cm.viridis(conf_val / conf_im1.max())  # Normalize conf to [0, 1]
+        ax2_2.plot(x1, y1, marker='o', markersize=5, color=color)
+
+    fig2.tight_layout()
     plt.show()
 
 def plot_depth_overlay_on_image(img, scene_map, pixel_uv, cmap='plasma', alpha=1.0, point_size=3, title=None):

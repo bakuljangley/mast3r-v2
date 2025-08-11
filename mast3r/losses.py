@@ -183,8 +183,12 @@ class Regr3D_ScaleInv (Regr3D):
 
         # subtract the median depth
         if self.gt_scale:
-            pred_pts1 *= gt_scale / pred_scale
-            pred_pts2 *= gt_scale / pred_scale
+            # pred_pts1 *= gt_scale / pred_scale
+            # pred_pts2 *= gt_scale / pred_scale
+            gt_pts1 /= gt_scale
+            gt_pts2 /= gt_scale
+            pred_pts1 /= gt_scale
+            pred_pts2 /= gt_scale
             # monitoring = dict(monitoring, pred_scale=(pred_scale/gt_scale).mean())
         else:
             gt_pts1 /= gt_scale

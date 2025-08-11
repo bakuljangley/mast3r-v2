@@ -111,6 +111,8 @@ class MASt3RBaseStereoViewDataset(BaseStereoViewDataset):
         for i in range(2):
 
             if aug_crop_arg == 'auto':
+                if not isinstance(views[i]['img'], PIL.Image.Image):
+                    views[i]['img'] = PIL.Image.fromarray(views[i]['img'])
                 S = min(views[i]['img'].size)
                 R = min(resolution)
                 aug_crop = S * (S - R) // R
@@ -120,6 +122,8 @@ class MASt3RBaseStereoViewDataset(BaseStereoViewDataset):
 
             # tranpose the target resolution if necessary
             assert resolution[0] >= resolution[1]
+            if not isinstance(views[i]['img'], PIL.Image.Image):
+                views[i]['img'] = PIL.Image.fromarray(views[i]['img'])
             W, H = imsize = views[i]['img'].size
             crop_resolution = resolution
             if H > 1.1 * W:

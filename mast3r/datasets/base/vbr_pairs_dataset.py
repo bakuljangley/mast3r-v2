@@ -16,13 +16,14 @@ def get_paths_from_scene(scene, img_root, depth_root, pose_root):
 
 
 class VBRPairsDataset(MASt3RBaseStereoViewDataset):
-    def __init__(self, root_dir, scene, split, pairs_dir, depth_dir, pose_dir, **kwargs):
+    def __init__(self, root_dir, scene, split, pairs_dir, depth_dir, pose_dir,seed=42, **kwargs):
         super().__init__(**kwargs)
         self.image_dir, self.depth_dir, self.poses_txt, self.calib_path = get_paths_from_scene(scene, root_dir, depth_dir, pose_dir)
         self.calib = self._load_calibration(self.calib_path)
         self.pose_values = np.loadtxt(self.poses_txt, comments="#")
         self.pairs = self._load_pairs(pairs_dir, scene, split)
         self.num_views = 2
+        self._rng = np.random.default_rng(seed)
         self.is_metric_scale = True #overwrite the metric scale flag
 
     def __len__(self):
@@ -48,7 +49,10 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
         depth_path = self.depth_dir / f"{idx:010d}.npy"
         img = np.array(Image.open(img_path).convert("RGB"))
         depth = np.load(depth_path).astype(np.float32)
-        depth[~np.isfinite(depth)] = 0.0
+        depth[~np.isfinite(depth)] = 0
+        # nan_count = np.isnan(depth).sum()
+        # inf_count = np.isinf(depth).sum()
+        # print(f"Image {idx}: NaN count = {nan_count}, Inf count = {inf_count}")
         T_cam_lidar = self.calib['cam_l']['T_cam_lidar'].astype(np.float32)
         pose = np.linalg.inv(T_cam_lidar @ np.linalg.inv(self._pose(idx)))
         K = self.calib['cam_l']['K'].astype(np.float32)
@@ -62,6 +66,17 @@ class VBRPairsDataset(MASt3RBaseStereoViewDataset):
             'label': f'vbr_{idx:010d}',
             'instance': str(idx),
         }
+    
+    def __getitem__(self, idx):
+        if isinstance(idx, tuple):
+            idx, ar_idx = idx
+        else:
+            # Use seeded RNG to pick ar_idx reproducibly
+            # This ensures same AR per idx every run
+            ar_idx = self._rng.integers(0, len(self._resolutions))
+        
+        # Now just call parent __getitem__ with the tuple idx including ar_idx
+        return super().__getitem__((idx, ar_idx))
 
     def _pose(self, idx):
         pose_vec = self.pose_values[idx]  # [tx, ty, tz, qx, qy, qz, qw]

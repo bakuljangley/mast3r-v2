@@ -6,7 +6,7 @@
 # training executable for MASt3R
 # --------------------------------------------------------
 from mast3r.model import AsymmetricMASt3R
-from mast3r.losses import ConfMatchingLoss, MatchingLoss, APLoss, Regr3D, InfoNCE, Regr3D_ScaleShiftInv
+from mast3r.losses import ConfMatchingLoss, MatchingLoss, APLoss, Regr3D, InfoNCE, Regr3D_ScaleShiftInv, Regr3D_ScaleInv
 from mast3r.datasets import ARKitScenes, BlendedMVS, Co3d, MegaDepth, ScanNetpp, StaticThings3D, Waymo, WildRGBD
 from mast3r.datasets.base.vbr_pairs_dataset import VBRPairsDataset
 import mast3r.utils.path_to_dust3r  # noqa
@@ -15,6 +15,7 @@ import dust3r.training
 dust3r.training.AsymmetricMASt3R = AsymmetricMASt3R
 dust3r.training.Regr3D = Regr3D
 dust3r.training.Regr3D_ScaleShiftInv = Regr3D_ScaleShiftInv
+dust3r.training.Regr3D_ScaleInv = Regr3D_ScaleInv
 dust3r.training.MatchingLoss = MatchingLoss
 dust3r.training.ConfMatchingLoss = ConfMatchingLoss
 dust3r.training.InfoNCE = InfoNCE

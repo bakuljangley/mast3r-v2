@@ -222,9 +222,12 @@ def compute_distance(pose1, pose2):
     """Compute Euclidean distance between two poses."""
     return np.linalg.norm(np.array(pose1[:3]) - np.array(pose2[:3]))
 
+
+
+
 def estimate_and_evaluate_pose(method, mast3r_pts, lidar_pts, inlier_im1, K_new,
                               pose_gt, distance_anchor_query, n_matches, n_inliers, n_overlapping,
-                              T_local_anchor, T_base_cam):
+                              T_local_anchor, T_base_cam, scene_map=None):
     """Estimate pose using specified method and compute statistics."""
 
     # Estimate pose based on method
@@ -235,10 +238,6 @@ def estimate_and_evaluate_pose(method, mast3r_pts, lidar_pts, inlier_im1, K_new,
     elif method == 'lidar':
         T = solve_pnp(lidar_pts, inlier_im1, K_new)
         pts_for_depth = lidar_pts
-        scale = None
-    elif method == 'inliers_mast3r':  
-        T = solve_pnp(mast3r_pts, inlier_im1, K_new)
-        pts_for_depth = mast3r_pts
         scale = None
     else:
         pts_for_depth, scale, T = scale_pnp(method, mast3r_pts, lidar_pts, inlier_im1, K_new)
@@ -265,8 +264,8 @@ def estimate_and_evaluate_pose(method, mast3r_pts, lidar_pts, inlier_im1, K_new,
     ]
 
     config = METHOD_CONFIGS[method]
-    if config['has_pointmap_error']:
-            statistics.extend([pointmap_error, pointmap_error_x, pointmap_error_y, pointmap_error_z])
+    if config['has_pointmap_error'] or method == 'inliers_mast3r':
+        statistics.extend([pointmap_error, pointmap_error_x, pointmap_error_y, pointmap_error_z])
     if config['has_scale'] and scale is not None:
         statistics.extend(np.ravel(scale))
 
@@ -299,7 +298,9 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
             inlier_im0 = inlier_im0_initial.copy()
             inlier_im1 = inlier_im1_initial.copy()
             if method == 'inliers_mast3r':
-                # Use all inliers, skip overlap calculation
+                valid_mask = np.isfinite(scene_map).all(axis=2) & np.isfinite(pts3d_im0).all(axis=2)
+                pts3d_error = np.abs(pts3d_im0[valid_mask] - scene_map[valid_mask])
+                median_depth_error = np.median(pts3d_error, axis=0)
                 mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
                 lidar_pts = None  # Not used for this method
                 n_overlapping = np.nan  # Not used for this method
@@ -319,12 +320,12 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
 
                 if len(inlier_im0) < 4:
                     save_failed_result_csv(output_file, query_idx, anchor_idx, method, n_matches, n_inliers, n_overlapping)
-                    continue 
+                    continue
 
             result = estimate_and_evaluate_pose(
                 method, mast3r_pts, lidar_pts, inlier_im1, K_new,
                 pose_gt, distance_anchor_query, n_matches, n_inliers, n_overlapping,
-                T_local_anchor, T_base_cam
+                T_local_anchor, T_base_cam, scene_map  # Pass scene_map here
             )
 
             if result['success']:
@@ -336,9 +337,10 @@ def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_c
         print(f"Exception for pair {anchor_idx}, {query_idx}: {e}")
         for method, output_file in output_files.items():
             save_exception_result_csv(output_file, query_idx, anchor_idx, method)
+
 def main():
     args = parse_args()
-    
+
     # Load dataset and calibration
     dataset = vbrInterpolatedDataset(dataset_root_dir=args.dataset_root, scene_name=args.dataset_scene)
     calib_path = get_paths_from_scene(args.dataset_root, args.dataset_scene)[-1]
@@ -368,6 +370,9 @@ def main():
     for method, config in METHOD_CONFIGS.items():
         output_file = f"{args.output_prefix}_{config['filename_suffix']}.csv"
         output_files[method] = output_file
+        # Add pointmap error headers for inliers_mast3r
+        if method == 'inliers_mast3r' and 'pointmap_error' not in config:
+            config['has_pointmap_error'] = True
         create_csv_with_headers(output_file, config)
 
 

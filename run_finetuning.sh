@@ -2,19 +2,19 @@
 
 # --- User Configurable Paths ---
 ROOT="/datasets/vbr_slam/"
-PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/"
-DEPTH_DIR="/home/bjangley/VPR/vbr_final/depths"
-POSE_DIR="/home/bjangley/VPR/vbr_final/poses"
+PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/inliers700/"
+DEPTH_DIR="/home/bjangley/VPR/vbr_inliers700/depths"
+POSE_DIR="/home/bjangley/VPR/vbr_inliers700/poses"
 
 SCENE_TRAIN="ciampino_train0"
 SCENE_TEST="ciampino_train1"
 # --- Dataset Arguments ---
-TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512,256)], aug_crop=False)"
-TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TEST', split='test', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512,256)], aug_crop=False)"
+TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
+TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TEST', split='test', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 256)], aug_crop=False)"
 
 # --- Loss Function ---
-TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True), alpha=0.2)"
-
+TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
+# TEST_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True)"
 # --- Model Arguments ---
 MODEL="AsymmetricMASt3R(
     patch_embed_cls='PatchEmbedDust3R',
@@ -35,21 +35,22 @@ MODEL="AsymmetricMASt3R(
     landscape_only=False
 )"
 ##pretrained model path
-PRETRAINED="/home/bjangley/VPR/mast3r-old/checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
+PRETRAINED="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
 
 # --- Training Hyperparameters ---
-BATCH_SIZE=2
+BATCH_SIZE=8
 EPOCHS=20
 ACCUM_ITER=4
-LR=0.0001
-MIN_LR=1e-06
+LR=0.000001
+MIN_LR=1e-07
 WARMUP_EPOCHS=0
 SAVE_FREQ=1
-KEEP_FREQ=5
+KEEP_FREQ=2
 EVAL_FREQ=1
+WEIGHT_DECAY=0.05
 export CUDA_VISIBLE_DEVICES=4
 # --- Output Directory ---
-OUTPUT_DIR_CHECKPOINTS="checkpoints/ciampino_train0_ciampino_train1"
+OUTPUT_DIR_CHECKPOINTS="checkpoints_v3/ciampino_train0_ciampino_train1_lr6"
 
 # --- Launch Training ---
 torchrun --nproc_per_node=1 --master_port=29501 train.py \
@@ -59,6 +60,7 @@ torchrun --nproc_per_node=1 --master_port=29501 train.py \
     --pretrained "$PRETRAINED" \
     --train_criterion "$TRAIN_CRITERION" \
     --test_criterion "$TRAIN_CRITERION" \
+    --weight_decay $WEIGHT_DECAY\
     --lr $LR \
     --min_lr $MIN_LR \
     --warmup_epochs $WARMUP_EPOCHS \
