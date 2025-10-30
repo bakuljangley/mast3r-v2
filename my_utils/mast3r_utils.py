@@ -9,7 +9,7 @@ from mast3r.fast_nn import fast_reciprocal_NNs
 from dust3r.inference import inference
 from dust3r.utils.image import load_images
 import time
-
+from pyproj import Proj, transform #cartographic transformations and coordinate conversions
 from .transformations import pnp_to_se3
 
 def solve_pnp(pts3d, pts2d, K):
@@ -26,7 +26,7 @@ def solve_pnp(pts3d, pts2d, K):
     """
     if len(pts3d) < 4 or len(pts2d) < 4:
         return None
-    success, rvec, tvec, _ = cv2.solvePnPRansac(pts3d.astype(np.float32), pts2d.astype(np.float32), K, None)
+    success, rvec, tvec,_ = cv2.solvePnPRansac(pts3d.astype(np.float32), pts2d.astype(np.float32), K, None)
     return pnp_to_se3(rvec, tvec) if success else None
 
 
@@ -171,6 +171,26 @@ def get_master_output(model, device, anchor_image, query_image, visualize=False,
     return (matches_im0, matches_im1,
             pts3d_im0, pts3d_im1, conf_im0, conf_im1)
 
+def apply_conf_threshold(pts3d_im0, inlier_im0, inlier_im1, conf_im0, percentile): 
+    #remove lowest n percentile conf (points and matches/inliers) 
+    """Apply the same confidence threshold to both dense pts3d and sparse inliers."""
+    thr = np.percentile(conf_im0[~np.isnan(conf_im0)], percentile)
+
+    # 1) Dense map masking
+    mask_dense = conf_im0 >= thr
+    pts3d_im0_filtered = np.where(mask_dense[..., None], pts3d_im0, np.nan)
+
+    # 2) Inlier filtering
+    if inlier_im0 is not None and len(inlier_im0) > 0:
+        u = np.clip(inlier_im0[:, 0].astype(int), 0, conf_im0.shape[1]-1)
+        v = np.clip(inlier_im0[:, 1].astype(int), 0, conf_im0.shape[0]-1)
+        keep = conf_im0[v, u] >= thr
+        inlier_im0 = inlier_im0[keep]
+        inlier_im1 = inlier_im1[keep]
+
+    return pts3d_im0_filtered, inlier_im0, inlier_im1
+
+
 def visualize_2d_matches(conf_im0, conf_im1, matches_im0, matches_im1, view1, view2, n_viz=20):
     """Optional visualization of matches with confidence heatmap."""
     match_idx_to_viz = np.linspace(0, len(matches_im0) - 1, n_viz).astype(int)
@@ -183,45 +203,100 @@ def visualize_2d_matches(conf_im0, conf_im1, matches_im0, matches_im1, view1, vi
         img = view['img'] * std[:, None, None] + mean[:, None, None]
         imgs.append(img.squeeze(0).permute(1, 2, 0).cpu().numpy())
 
-    H0, W0, H1, W1 = *imgs[0].shape[:2], *imgs[1].shape[:2]
-    img = np.concatenate((imgs[0], imgs[1]), axis=1)
+    def pad_to_same_height(img1, img2, pad_value=255):  # white padding instead of black
+        h0, w0 = img1.shape[:2]
+        h1, w1 = img2.shape[:2]
+        max_h = max(h0, h1)
+        pad_h0 = max_h - h0
+        pad_h1 = max_h - h1
 
-    # --- Figure 1: Matches with connecting lines ---
-    fig1, ax1 = plt.subplots(figsize=(12, 8))
+        if pad_h0 == 0 and pad_h1 == 0:
+            return img1, img2, 0, 0  # No padding needed, return original images
+
+        pad_top_0 = pad_h0 // 2
+        pad_top_1 = pad_h1 // 2
+
+        img1_padded = np.pad(img1, ((pad_top_0, pad_h0 - pad_top_0), (0, 0), (0, 0)), mode='constant', constant_values=pad_value)
+        img2_padded = np.pad(img2, ((pad_top_1, pad_h1 - pad_top_1), (0, 0), (0, 0)), mode='constant', constant_values=pad_value)
+        return img1_padded, img2_padded, pad_top_0, pad_top_1
+
+    imgs[0], imgs[1], pad_top_0, pad_top_1 = pad_to_same_height(imgs[0], imgs[1], pad_value=255)
+
+    # Add margin between images:
+    margin = 10
+    margin_pad = 255 * np.ones((imgs[0].shape[0], margin, 3), dtype=imgs[0].dtype)
+    img = np.concatenate((imgs[0], margin_pad, imgs[1]), axis=1)
+
+    fig1, ax1 = plt.subplots(figsize=(14, 8))
     ax1.imshow(img)
-    ax1.set_title('Top Matches with Connecting Lines')
+    # ax1.set_title('Top Matches with Connecting Lines')
+
+    cmap = plt.cm.gist_rainbow  # qualitative colormap with 20 distinct colors
+    num_colors = cmap.N
+
+    line_width = 3  # thicker lines
+    marker_size = 10
+    alpha = 1
+
     for i in range(n_viz):
         (x0, y0), (x1, y1) = viz_matches_im0[i], viz_matches_im1[i]
-        ax1.plot([x0, x1 + W0], [y0, y1], '-+', color=plt.cm.jet(i / n_viz))
-    divider = make_axes_locatable(ax1)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=conf_im0.min(), vmax=conf_im0.max()), cmap='viridis'), cax=cax)
+
+        # Adjust match coordinates for padding
+        y0 += pad_top_0
+        y1 += pad_top_1
+
+        # Normalize the index to a float between 0 and 1
+        normalized_index = float(i) / n_viz
+
+        color = cmap(normalized_index)  # cycle through colors if n_viz > 20
+        ax1.plot([x0, x1 + imgs[0].shape[1] + margin], [y0, y1], '-o',
+                color=color, alpha=alpha, markersize=marker_size, linewidth=line_width)
+
+    ax1.axis("off")
+
     plt.tight_layout()
     plt.show()
 
-    # --- Figure 2: Matches overlaid on individual images with confidence coloring ---
-    fig2, (ax2_1, ax2_2) = plt.subplots(1, 2, figsize=(16, 8))  # Two subplots side by side
 
-    # Image 1 with matches
-    ax2_1.imshow(imgs[0])
-    ax2_1.set_title('Matches on Image 1')
-    for i in range(len(matches_im0)):
-        x0, y0 = matches_im0[i]
-        conf_val = conf_im0[y0,x0]  # Extract the scalar value
-        color = plt.cm.viridis(conf_val / conf_im0.max())  # Normalize conf to [0, 1]
-        ax2_1.plot(x0, y0, marker='o', markersize=5, color=color)
+    # # --- 4x4 Grid Visualization ---
+    # fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
-    # Image 2 with matches
-    ax2_2.imshow(imgs[1])
-    ax2_2.set_title('Matches on Image 2')
-    for i in range(len(matches_im1)):
-        x1, y1 = matches_im1[i]
-        conf_val = conf_im1[y1,x1]  # Extract the scalar value
-        color = plt.cm.viridis(conf_val / conf_im1.max())  # Normalize conf to [0, 1]
-        ax2_2.plot(x1, y1, marker='o', markersize=5, color=color)
+    # # Top-left: Anchor image
+    # axes[0, 0].imshow(imgs[0])
+    # axes[0, 0].set_title('Anchor Image', fontsize=20)
+    # axes[0, 0].axis('off')
 
-    fig2.tight_layout()
-    plt.show()
+    # # Top-right: Query image
+    # axes[0, 1].imshow(imgs[1])
+    # axes[0, 1].set_title('Query Image', fontsize=20)
+    # axes[0, 1].axis('off')
+
+    # # Bottom-left: All MASt3R Matches on Anchor Image
+    # axes[1, 0].imshow(imgs[0])
+    # axes[1, 0].set_title('Matches on Anchor Image', fontsize=20)
+    # axes[1, 0].axis('off')
+    # for i in range(len(matches_im0)):
+    #     x0, y0 = matches_im0[i]
+    #     y0 += pad_top_0 # adjust for padding
+    #     conf_val = conf_im0[y0, x0]
+    #     color = plt.cm.gist_rainbow(conf_val / conf_im0.max())
+    #     axes[1, 0].plot(x0, y0, marker='o', markersize=3, color=color)
+
+    # # Bottom-right: All MASt3R Matches on Query Image
+    # axes[1, 1].imshow(imgs[1])
+    # axes[1, 1].set_title( 'Matches on Query Image', fontsize=20)
+    # axes[1, 1].axis('off')
+    # for i in range(len(matches_im1)):
+    #     x1, y1 = matches_im1[i]
+    #     y1 += pad_top_1 # adjust for padding
+    #     conf_val = conf_im1[y1, x1]
+    #     color = plt.cm.gist_rainbow(conf_val / conf_im1.max())
+    #     axes[1, 1].plot(x1, y1, marker='o', markersize=3, color=color)
+
+    # plt.tight_layout()
+    # plt.show()
+
+
 
 def plot_depth_overlay_on_image(img, scene_map, pixel_uv, cmap='plasma', alpha=1.0, point_size=3, title=None):
     """
@@ -240,13 +315,20 @@ def plot_depth_overlay_on_image(img, scene_map, pixel_uv, cmap='plasma', alpha=1
     v = pixel_uv[:, 1]
     depth = scene_map[v, u][:,2]
     fig, ax = plt.subplots()
-    ax.imshow(img, origin='upper')
+    im = ax.imshow(img, origin='upper')
     scatter = ax.scatter(u, v, c=depth, cmap=cmap, s=point_size, alpha=alpha)
-    plt.colorbar(scatter, ax=ax, label='Depth (m)')
-    ax.set_xlim(0, img.shape[1])
-    ax.set_ylim(img.shape[0], 0)
+
+    # Create a divider for the axes
+    divider = make_axes_locatable(ax)
+    # # Add an axes to the right of the image whose width is 5% of the original axes.
+    # cax = divider.append_axes("right", size="5%", pad=0.05)
+    
+    # plt.colorbar(scatter, cax=cax, label='Depth (m)')
+    # plt.colorbar(scatter, cax=cax)
+    # ax.set_xlim(0, img.shape[1])
+    # ax.set_ylim(img.shape[0], 0)
     ax.axis('off')
-    ax.set_title(title if title else 'Depth Overlay on Image')
+    # ax.set_title(title if title else 'Depth Overlay on Image')
     plt.show()
 
 def plot_lidar_mast3r_matches(img, lidar_uv, matched_lidar_uv, inliers_im0, title="LiDAR: Matched vs Unmatched Projections"):
@@ -336,3 +418,44 @@ def quaternion_rotational_error(q1, q2):
     # Convert the relative quaternion to an angle
     angle = q_relative.magnitude()  # Returns the angular distance in radians
     return angle
+
+
+def getUTMzone(longitude):
+    return int((longitude + 180) / 6) + 1
+
+def getRotationFromCompass(compass_angle): #rotates about z axis, counterclockwise positive
+    """ Create a rotation matrix based on compass angle (in radians). """
+    return np.array([
+        [np.cos(compass_angle), -np.sin(compass_angle), 0],
+        [np.sin(compass_angle), np.cos(compass_angle), 0],
+        [0, 0, 1]
+    ])
+
+def transformGlobalCoordinates(pnp_rotation, pnp_translation, ref_lat, ref_lon, compass_angle, ref_alt=0):
+    # Define the reference point in UTM coordinates
+    utm_proj = Proj(proj='utm', zone=getUTMzone(ref_lon), ellps='WGS84') 
+    ref_x, ref_y = utm_proj(ref_lon, ref_lat)
+
+    if pnp_rotation.shape == (3,):
+        R, _ = cv2.Rodrigues(pnp_rotation)
+    else:
+        R = pnp_rotation
+
+
+    compass_rotation = getRotationFromCompass(np.deg2rad(compass_angle))
+    T_world_to_camera = np.eye(4)
+    T_world_to_camera[:3, :3] = compass_rotation[:3, :3]
+    T_world_to_camera[:3, 3] = np.array([ref_x, ref_y, 0])
+    R_cam_to_world = np.array([[1, 0, 0],
+                               [0, 0, 1],
+                               [0, -1, 0]])
+
+    query_camera_in_anchor_frame = R_cam_to_world  @ pnp_translation
+    query_camera_position = np.linalg.inv(compass_rotation) @  query_camera_in_anchor_frame
+    # Add this position to the reference UTM coordinates
+    new_x = ref_x + query_camera_position[0]
+    new_y = ref_y + query_camera_position[1]
+    global_alt = ref_alt + query_camera_position[2]
+    # Transform back to latitude and longitude
+    global_lon, global_lat = utm_proj(new_x, new_y, inverse=True)
+    return global_lat, global_lon, global_alt

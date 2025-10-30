@@ -2,18 +2,20 @@
 
 # --- User Configurable Paths ---
 ROOT="/datasets/vbr_slam/"
-PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/inliers700/"
-DEPTH_DIR="/home/bjangley/VPR/vbr_inliers700/depths"
-POSE_DIR="/home/bjangley/VPR/vbr_inliers700/poses"
+PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/"
+DEPTH_DIR="/home/bjangley/VPR/vbr/depths"
+POSE_DIR="/home/bjangley/VPR/vbr/poses"
 
-SCENE_TRAIN="ciampino_train0"
-SCENE_TEST="ciampino_train1"
+SCENE_TRAIN1="campus_train0"
+SCENE_TRAIN2="campus_train1"
+SCENE_VAL="ciampino_train1"
 # --- Dataset Arguments ---
-TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
-TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TEST', split='test', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 256)], aug_crop=False)"
+TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)+VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN2', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
+# TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
+TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_VAL', split='val', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 256)], aug_crop=False)"
 
 # --- Loss Function ---
-TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
+TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0),alpha=0.2)"
 # TEST_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True)"
 # --- Model Arguments ---
 MODEL="AsymmetricMASt3R(
@@ -41,16 +43,16 @@ PRETRAINED="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDeco
 BATCH_SIZE=8
 EPOCHS=20
 ACCUM_ITER=4
-LR=0.000001
-MIN_LR=1e-07
+LR=5e-5
+MIN_LR=3e-06
 WARMUP_EPOCHS=0
 SAVE_FREQ=1
-KEEP_FREQ=2
+KEEP_FREQ=1
 EVAL_FREQ=1
 WEIGHT_DECAY=0.05
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=7
 # --- Output Directory ---
-OUTPUT_DIR_CHECKPOINTS="checkpoints_v3/ciampino_train0_ciampino_train1_lr6"
+OUTPUT_DIR_CHECKPOINTS="checkpoints_v1/ciampino1_ciampino2_lr5e5_3e6"
 
 # --- Launch Training ---
 torchrun --nproc_per_node=1 --master_port=29501 train.py \

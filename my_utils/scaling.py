@@ -42,25 +42,36 @@ def compute_scaled_points(method, master_pts, lidar_pts):
         return None, None
 
     try:
-        if method in ['l1_translation', 'v1']:
-            t_m = np.mean(master_pts, axis=0)
-            t_l = np.mean(lidar_pts, axis=0)
-            norm_m = np.linalg.norm(t_m, ord=1)
-            norm_l = np.linalg.norm(t_l, ord=1)
-            if norm_m < 1e-6:
+        if method in ['l2_centroid', 'v1']:
+            # Calculate L2 norm (distance to origin) for each point
+            norm_m = np.linalg.norm(master_pts, ord=2, axis=1)
+            norm_l = np.linalg.norm(lidar_pts, ord=2, axis=1)
+
+            # Calculate the mean distance to the origin
+            mean_distance_m = np.mean(norm_m)
+            mean_distance_l = np.mean(norm_l)
+
+            if mean_distance_m < 1e-6:
                 return None, None
-            scale = norm_l / norm_m
+
+            scale = mean_distance_l / mean_distance_m
+            scaled_pts = master_pts * scale
+            
+        elif method in ['l2_axis', 'v2']:  
+            # Calculate L2 norm for each axis
+            norm_m = np.linalg.norm(master_pts, ord=2, axis=0)
+            norm_l = np.linalg.norm(lidar_pts, ord=2, axis=0)
+            # Calculate scale per axis
+            scale = np.zeros(3)
+            for i in range(3):
+                if norm_m[i] < 1e-6:
+                    return None, None
+                scale[i] = norm_l[i] / norm_m[i]
+
+            # Apply per-axis scaling
             scaled_pts = master_pts * scale
 
-        elif method in ['alignment', 'v2']:
-            numerator = np.sum(master_pts * lidar_pts)
-            denominator = np.sum(master_pts ** 2)
-            if denominator < 1e-6:
-                return None, None
-            scale = numerator / denominator
-            scaled_pts = master_pts * scale
-
-        elif method in ['l1_centroid', 'v3']:
+        elif method in ['l2_mean', 'v3']:
             norm_m = np.linalg.norm(master_pts, ord=2, axis=0)
             norm_l = np.linalg.norm(lidar_pts, ord=2, axis=0)
             c_m = np.mean(norm_m)

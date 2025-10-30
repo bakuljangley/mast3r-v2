@@ -24,6 +24,7 @@ METHOD_CONFIGS = {
     'lidar': {'has_pointmap_error': False, 'has_scale': False, 'filename_suffix': 'lidar'},
     'v4': {'has_pointmap_error': True, 'has_scale': True, 'scale_type': 'vector', 'filename_suffix': 'mast3r_scaled_v4'},
     'v3': {'has_pointmap_error': True, 'has_scale': True, 'scale_type': 'scalar', 'filename_suffix': 'mast3r_scaled_v3'},
+    'v2': {'has_pointmap_error': True, 'has_scale': True, 'scale_type': 'vector', 'filename_suffix': 'mast3r_scaled_v2'},
     'icp': {'has_pointmap_error': True, 'has_scale': True, 'scale_type': 'scalar', 'filename_suffix': 'mast3r_scaled_icp'},
 }
 
@@ -33,6 +34,7 @@ def parse_args():
     parser.add_argument('--dataset_root', type=str, required=True, help='Path to base folder where vbr dataset is saved')
     parser.add_argument('--pairs_path', type=str, required=True, help='Path to directory containing pairs files.  Will look for <scene>_pairs.txt')
     parser.add_argument('--split', type=str, required=True, help='Split to use from pairs: all, test, train, val')
+    parser.add_argument('--conf_percentile', type=float, default=0.0,help='Drop bottom n%% of confidence values. Default=0 (disabled).')
     parser.add_argument('--output_root', type=str, required=True, help='Root directory for output files. Subdirectories will be created for each scene.')
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--model_path', type=str, required=True, help="Path to Model Checkpoint/Pre-trained Weights")
@@ -120,6 +122,42 @@ def compute_pointmap_error(pts3d_im0, scene_map):
     median_error_x, median_error_y, median_error_z = np.median(pts3d_error, axis=0)
     return [median_error, median_error_x, median_error_y, median_error_z]
 
+def compute_pointmap_abs_rel_error(pts3d_im0, scene_map):
+    """Compute Absolute Relative Error (AbsRel) overall and per axis."""
+    valid_mask = np.isfinite(scene_map).all(axis=2) & np.isfinite(pts3d_im0).all(axis=2)
+
+    pred_pts = pts3d_im0[valid_mask]
+    gt_pts = scene_map[valid_mask]
+
+    if len(pred_pts) == 0:
+        return [np.nan] * 4
+
+    abs_error = np.abs(pred_pts - gt_pts)  # shape (N, 3)
+    gt_abs = np.abs(gt_pts)
+
+    # Mask to avoid division by zero on all axes
+    nonzero_mask = gt_abs > 1e-6
+
+    # Per-axis relative error, safely computed only where GT > 1e-6
+    rel_error_per_axis = np.zeros_like(abs_error)
+    rel_error_per_axis[nonzero_mask] = abs_error[nonzero_mask] / gt_abs[nonzero_mask]
+
+    # Mean per-axis absolute relative errors
+    abs_rel_x = np.mean(rel_error_per_axis[:, 0])
+    abs_rel_y = np.mean(rel_error_per_axis[:, 1])
+    abs_rel_z = np.mean(rel_error_per_axis[:, 2])
+
+    # For overall error compute Euclidean norms once
+    diff_norm = np.linalg.norm(pred_pts - gt_pts, axis=1)
+    gt_norm = np.linalg.norm(gt_pts, axis=1)
+
+    # Mask for valid gt_norm to avoid division by zero
+    valid_gt_norm = gt_norm > 1e-6
+
+    abs_rel_overall = np.mean(diff_norm[valid_gt_norm] / gt_norm[valid_gt_norm])
+
+    return [abs_rel_overall, abs_rel_x, abs_rel_y, abs_rel_z]
+
 def prepare_geometric_data(anchor, K, T_cam_lidar):
     img = cv2.imread(anchor['image'])
     H, W = img.shape[:2]
@@ -130,130 +168,136 @@ def prepare_geometric_data(anchor, K, T_cam_lidar):
     )
     return K_new, depth_map, scene_map
 
-def get_overlap_data(inlier_im0, depth_map):
-    valid_mast3r_uv, valid_lidar_uv, matched_idx = overlap(inlier_im0, depth_map, max_pixel_dist=2)
-    if len(matched_idx) == 0:
-        return None, None, None
-    return matched_idx, valid_mast3r_uv, valid_lidar_uv
 
-def estimate_pose_for_method(method, inlier_im0, inlier_im1, pts3d_im0, scene_map, overlap_data, K_new):
-    """Estimate pose for a specific method."""
-    matched_idx, _, valid_lidar_uv = overlap_data if overlap_data[0] is not None else (None, None, None)
-    
-    if method == 'mast3r':
-        # Use all inliers with MASt3R 3D points
-        mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
-        T = solve_pnp(mast3r_pts, inlier_im1, K_new)
-        scale = None
-        
-    elif method == 'lidar':
-        # Use only overlap points with LiDAR 3D points
-        if matched_idx is None or len(matched_idx) < 4:
+def apply_conf_threshold(pts3d_im0, inlier_im0, inlier_im1, conf_im0, percentile):
+    """Apply the same confidence threshold to both dense pts3d and sparse inliers."""
+    thr = np.percentile(conf_im0[~np.isnan(conf_im0)], percentile)
+
+    # 1) Dense map masking
+    mask_dense = conf_im0 >= thr
+    pts3d_im0_filtered = np.where(mask_dense[..., None], pts3d_im0, np.nan)
+
+    # 2) Inlier filtering
+    if inlier_im0 is not None and len(inlier_im0) > 0:
+        u = np.clip(inlier_im0[:, 0].astype(int), 0, conf_im0.shape[1]-1)
+        v = np.clip(inlier_im0[:, 1].astype(int), 0, conf_im0.shape[0]-1)
+        keep = conf_im0[v, u] >= thr
+        inlier_im0 = inlier_im0[keep]
+        inlier_im1 = inlier_im1[keep]
+
+    return pts3d_im0_filtered, inlier_im0, inlier_im1
+
+
+def estimate_pose_for_method(method, inlier_im0, inlier_im1, pts3d_im0, scene_map, depth_map, K_new):
+    if method == 'lidar':
+        # Only method that requires overlap
+        valid_mast3r_uv, valid_lidar_uv, matched_idx = overlap(inlier_im0, depth_map, max_pixel_dist=2)
+        if len(matched_idx)==0:
             return None, None, None
         lidar_pts = scene_map[valid_lidar_uv[:, 1], valid_lidar_uv[:, 0]]
         T = solve_pnp(lidar_pts, inlier_im1[matched_idx], K_new)
-        mast3r_pts = lidar_pts  # For depth calculation
-        scale = None
-        
-    else:  # Scaled methods (v4)
-        if matched_idx is None or len(matched_idx) < 4:
-            return None, None, None
-            
-        # Estimate scale from overlap points
-        mast3r_overlap = pts3d_im0[inlier_im0[matched_idx, 1], inlier_im0[matched_idx, 0]]
-        lidar_overlap = scene_map[valid_lidar_uv[:, 1], valid_lidar_uv[:, 0]]
-        _, scale, _ = scale_pnp(method, mast3r_overlap, lidar_overlap, inlier_im1[matched_idx], K_new)
-         
-        # Apply scale to all inliers
-        all_mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
-        mast3r_pts = all_mast3r_pts * scale  # Apply scaling
+        return T, lidar_pts, None
+
+    elif method == 'mast3r':
+        mast3r_pts = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]]
         T = solve_pnp(mast3r_pts, inlier_im1, K_new)
-    
-    return T, mast3r_pts, scale
+        return T, mast3r_pts, None
+
+    else:  # scaled methods
+        valid_mask = np.isfinite(scene_map).all(axis=2) & np.isfinite(pts3d_im0).all(axis=2)
+        mast3r_all, lidar_all = pts3d_im0[valid_mask], scene_map[valid_mask]
+        scaled_pts, scale = compute_scaled_points(method, mast3r_all, lidar_all)
+        if scaled_pts is None or scale is None:
+            return None, None, None
+
+        mast3r_inliers = pts3d_im0[inlier_im0[:, 1], inlier_im0[:, 0]] * scale
+        T = solve_pnp(mast3r_inliers, inlier_im1, K_new)
+        return T, mast3r_inliers, scale
+
 
 def process_pair(model, anchor, query, anchor_idx, query_idx, K, T_base_cam, T_cam_lidar, args, output_files):
     try:
-        # Get matches directly from MASt3R
         output = get_master_output(model, args.device, anchor['image'], query['image'], visualize=False, verbose=False)
-        matches_im0, matches_im1, pts3d_im0 = output[0], output[1], output[2]
-        # Apply fundamental matrix filtering
+        matches_im0, matches_im1, pts3d_im0 = output[:3]
+        conf_im0 = output[4] if args.conf_percentile > 0 else None
         if len(matches_im0) < 8:
             for method, output_file in output_files.items():
                 save_failed_result_csv(output_file, query_idx, anchor_idx, method, len(matches_im0), 0)
             return
-        
+
         F, mask_f = cv2.findFundamentalMat(matches_im0, matches_im1, cv2.FM_RANSAC, 1, 0.99)
         if mask_f is None:
             for method, output_file in output_files.items():
                 save_failed_result_csv(output_file, query_idx, anchor_idx, method, len(matches_im0), 0)
             return
-        
+
         inlier_mask = mask_f.ravel().astype(bool)
         inlier_im0, inlier_im1 = matches_im0[inlier_mask], matches_im1[inlier_mask]
-        
-        n_matches, n_inliers = len(matches_im0), len(inlier_im0)
-        
-        # Early exit if insufficient inliers
+
+        n_inliers = len(inlier_im0)
+
+        if conf_im0 is not None:
+            pts3d_im0, inlier_im0, inlier_im1 = apply_conf_threshold(
+                pts3d_im0, inlier_im0, inlier_im1, conf_im0, args.conf_percentile
+            )
+
+        n_matches = len(inlier_im0)
+
         if n_inliers < args.min_inliers:
             for method, output_file in output_files.items():
                 save_failed_result_csv(output_file, query_idx, anchor_idx, method, n_matches, n_inliers)
             return
-        # Prepare geometric data
+
+        # Prepare depth/scene maps
         K_new, depth_map, scene_map = prepare_geometric_data(anchor, K, T_cam_lidar)
-        overlap_data = get_overlap_data(inlier_im0, depth_map)
-        n_overlapping = len(overlap_data[0]) if overlap_data[0] is not None else 0
-        
-        # Compute ground truth
+
+        # Compute GT
         T_anchor = pose_to_se3(anchor['pose'])
         T_query = pose_to_se3(query['pose'])
         T_gt = np.linalg.inv(T_query @ T_base_cam) @ T_anchor @ T_base_cam
         pose_gt = se3_to_pose(T_gt)
         distance_anchor_query = np.linalg.norm(np.array(anchor['pose'][:3]) - np.array(query['pose'][:3]))
-        
+
         # Process each method
         for method, output_file in output_files.items():
             T, pts_for_depth, scale = estimate_pose_for_method(
-                method, inlier_im0, inlier_im1, pts3d_im0, scene_map, overlap_data, K_new
+                method, inlier_im0, inlier_im1, pts3d_im0, scene_map, depth_map, K_new
             )
-            
+
             if T is None:
-                save_failed_result_csv(output_file, query_idx, anchor_idx, method, n_matches, n_inliers, n_overlapping)
+                save_failed_result_csv(output_file, query_idx, anchor_idx, method, n_matches, n_inliers)
                 continue
-            
-            # Compute final pose and statistics
+
             T_local = T_anchor @ T_base_cam @ np.linalg.inv(T)
             pose = se3_to_pose(T_local)
-            
+
             median_depth = np.median(pts_for_depth[:, 2]) if pts_for_depth is not None else np.nan
             pos_error, x_error, y_error, z_error, rot_error = compute_statistics(se3_to_pose(T), pose_gt)
-            
-            # Build statistics
-            statistics = [n_matches, n_inliers, n_overlapping, median_depth, 
-                         x_error, y_error, z_error, pos_error, rot_error, distance_anchor_query]
-            
-            # Add pointmap error for methods that have it
+
+            # Base stats
+            statistics = [
+                n_matches, n_inliers,
+                (len(pts_for_depth) if method == 'lidar' else np.nan),  # n_overlapping only for lidar
+                median_depth, x_error, y_error, z_error, pos_error, rot_error, distance_anchor_query
+            ]
+
             config = METHOD_CONFIGS[method]
             if config['has_pointmap_error']:
-                if method == 'mast3r':
-                    # For mast3r method
-                    pointmap_errors = compute_pointmap_error(pts3d_im0, scene_map)
-                else:
-                    # Apply scaling to pts3d_im0 for scaled methods
-                    scaled_pts3d_im0 = pts3d_im0 * scale if scale is not None else pts3d_im0
-                    pointmap_errors = compute_pointmap_error(scaled_pts3d_im0, scene_map)
-
+                scaled_pts3d = pts3d_im0 * scale if scale is not None else pts3d_im0
+                pointmap_errors = compute_pointmap_abs_rel_error(scaled_pts3d, scene_map)
                 statistics.extend(pointmap_errors)
-            
-            # Add scale for scaled methods
+
             if config['has_scale'] and scale is not None:
                 statistics.extend(np.ravel(scale))
-            
+
             save_result_csv(output_file, query_idx, anchor_idx, pose, statistics, method)
-            
+
     except Exception as e:
         print(f"Exception for pair {anchor_idx}, {query_idx}: {e}")
         for method, output_file in output_files.items():
+            print(method)
             save_failed_result_csv(output_file, query_idx, anchor_idx, method)
+
 
 def main():
     args = parse_args()

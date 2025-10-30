@@ -1,0 +1,72 @@
+{
+  "campus_train0": {
+    "mast3r_scaled_icp": 1.910678,
+    "mast3r_scaled_v4": {
+      "x": 1.538921,
+      "y": 1.412691,
+      "z": 1.894286
+    },
+    "mast3r_scaled_v3": 1.882787,
+    "mast3r_scaled_v2": {
+      "x": 1.705426,
+      "y": 1.507935,
+      "z": 2.028919
+    }
+  },
+  "campus_train1": {
+    "mast3r_scaled_icp": 1.910678,
+    "mast3r_scaled_v4": {
+      "x": 1.538921,
+      "y": 1.412691,
+      "z": 1.894286
+    },
+    "mast3r_scaled_v3": 1.882787,
+    "mast3r_scaled_v2": {
+      "x": 1.705426,
+      "y": 1.507935,
+      "z": 2.028919
+    }
+  },
+  "ciampino_train0": {
+    "mast3r_scaled_icp": 1.998379,
+    "mast3r_scaled_v4": {
+      "x": 1.846733,
+      "y": 1.765349,
+      "z": 2.411832
+    },
+    "mast3r_scaled_v3": 2.212629,
+    "mast3r_scaled_v2": {
+      "x": 1.853518,
+      "y": 1.740683,
+      "z": 2.430732
+    }
+  },
+  "ciampino_train1": {
+    "mast3r_scaled_icp": 2.257380,
+    "mast3r_scaled_v4": {
+      "x": 2.066810,
+      "y": 1.963327,
+      "z": 2.871489
+    },
+    "mast3r_scaled_v3": 2.585909,
+    "mast3r_scaled_v2": {
+      "x": 2.088218,
+      "y": 1.938055,
+      "z": 2.907461
+    }
+  },
+  "spagna_train0": {
+    "mast3r_scaled_icp": 3.653060,
+    "mast3r_scaled_v4": {
+      "x": 3.690418,
+      "y": 3.750453,
+      "z": 4.015664
+    },
+    "mast3r_scaled_v3": 3.972212,
+    "mast3r_scaled_v2": {
+      "x": 3.722081,
+      "y": 3.863078,
+      "z": 4.069177
+    }
+  }
+}

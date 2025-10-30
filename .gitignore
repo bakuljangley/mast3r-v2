@@ -143,3 +143,6 @@ results_finetuning/
 
 pairs_mining/
 results_localization/
+
+*.ipynb_checkpoints
+*.ipynb

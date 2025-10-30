@@ -328,38 +328,38 @@ class vbrInterpolatedDataset:
         return np.concatenate([interpolated_translation, interpolated_rotation])
 
     def interpolate_lidar(self, img_time):
-        diffs = np.array(self.lidar_timestamps) - img_time
-        idx_before = np.where(diffs <= 0, diffs, -np.inf).argmax()
-        idx_after = np.where(diffs > 0, diffs, np.inf).argmin()
-        if idx_before == -np.inf or idx_after == np.inf:
-            return None
-        t_before = self.lidar_timestamps[idx_before]
-        t_after = self.lidar_timestamps[idx_after]
-        # Handle case where timestamps are identical
-        if t_before == t_after:
-        # No interpolation needed, just return the lidar data
-            lidar_data = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
-            return np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
-        # Read the structured LiDAR data correctly
-        lidar_before = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
-        lidar_after = np.fromfile(self.lidar_files[idx_after], dtype=self.lidar_dtype)
-        alpha = (img_time - t_before) / (t_after - t_before)
-        # Extract x, y, z coordinates from structured arrays
-        xyz_before = np.column_stack([lidar_before['x'], lidar_before['y'], lidar_before['z']])
-        xyz_after = np.column_stack([lidar_after['x'], lidar_after['y'], lidar_after['z']])
-        # Interpolate the xyz coordinates
-        interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
-        return interpolated_xyz
-        # diffs = np.abs(np.array(self.lidar_timestamps) - img_time)
-        # idx   = diffs.argmin()
-        # if diffs[idx] > self.max_time_diff:
+        # diffs = np.array(self.lidar_timestamps) - img_time
+        # idx_before = np.where(diffs <= 0, diffs, -np.inf).argmax()
+        # idx_after = np.where(diffs > 0, diffs, np.inf).argmin()
+        # if idx_before == -np.inf or idx_after == np.inf:
         #     return None
-        # # print(self.lidar_files[idx])
+        # t_before = self.lidar_timestamps[idx_before]
+        # t_after = self.lidar_timestamps[idx_after]
+        # # Handle case where timestamps are identical
+        # if t_before == t_after:
+        # # No interpolation needed, just return the lidar data
+        #     lidar_data = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
+        #     return np.column_stack([lidar_data['x'], lidar_data['y'], lidar_data['z']])
         # # Read the structured LiDAR data correctly
-        # lidar_data = np.fromfile(self.lidar_files[idx], dtype=self.lidar_dtype)
+        # lidar_before = np.fromfile(self.lidar_files[idx_before], dtype=self.lidar_dtype)
+        # lidar_after = np.fromfile(self.lidar_files[idx_after], dtype=self.lidar_dtype)
+        # alpha = (img_time - t_before) / (t_after - t_before)
         # # Extract x, y, z coordinates from structured arrays
-        # xyz = np.stack([lidar_data['x'], lidar_data['y'], lidar_data['z']], axis=-1)
-        # return xyz
+        # xyz_before = np.column_stack([lidar_before['x'], lidar_before['y'], lidar_before['z']])
+        # xyz_after = np.column_stack([lidar_after['x'], lidar_after['y'], lidar_after['z']])
+        # # Interpolate the xyz coordinates
+        # interpolated_xyz = xyz_before + alpha * (xyz_after - xyz_before)
+        # return interpolated_xyz
+        diffs = np.abs(np.array(self.lidar_timestamps) - img_time)
+        idx   = diffs.argmin()
+        if diffs[idx] > self.max_time_diff:
+            return None
+        # print(self.lidar_files[idx])
+        # Read the structured LiDAR data correctly
+        lidar_data = np.fromfile(self.lidar_files[idx], dtype=self.lidar_dtype)
+        # Extract x, y, z coordinates from structured arrays
+        xyz = np.stack([lidar_data['x'], lidar_data['y'], lidar_data['z']], axis=-1)
+        return xyz
 
     def slerp(self, q1, q2, alpha):
         q1 = q1 / np.linalg.norm(q1)
