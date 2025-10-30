@@ -1,7 +1,8 @@
 #!/bin/bash
+
 SCENE="ciampino_train1" #to evaluate on
 DATASET_ROOT="/datasets/vbr_slam"
-SEQUENCE_PATH="/home/bjangley/VPR/mast3r-v2/my_vbr_utils/vbr_sequences/ciampino_train1.json"
+SEQUENCE_PATH="my_vbr_utils/vbr_sequences/ciampino_train1.json"
 OUTPUT="pairs_mining/ciampino_train1/ciampino_matches_inliers_fm.csv"
 TEMP="pairs_mining/ciampino_train1/processed_pairs.txt" 
 

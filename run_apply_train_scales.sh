@@ -9,6 +9,7 @@ CHECKPOINT="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDeco
 # CHECKPOINT="/home/bjangley/VPR/mast3r-v2/checkpoints_v1/ciampino1_ciampino2_lr5e5_3e6_reg/checkpoint-best.pth"
 TEMP_PREFIX="results_localization/original_train_scale/temp" # Prefix for temp files
 SCALE_JSON="my_vbr_utils/train_scales.json"   # <-- replace with your precomputed scales JSON
+
 export CUDA_VISIBLE_DEVICES=5
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4

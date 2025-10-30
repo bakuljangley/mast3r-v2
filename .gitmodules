@@ -2,3 +2,6 @@
 	path = dust3r
 	url = https://github.com/bakuljangley/dust3r
 	branch = cvpr
+[submodule "monocular_depth_models/depthanythingv2"]
+	path = monocular_depth_models/depthanythingv2
+	url = https://github.com/bakuljangley/Depth-Anything-V2.git
