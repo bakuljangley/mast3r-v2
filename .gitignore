@@ -146,3 +146,6 @@ results_localization/
 
 *.ipynb_checkpoints
 *.ipynb
+
+# Ignore Jupyter notebooks
+*.ipynb
