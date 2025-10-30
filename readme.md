@@ -23,22 +23,26 @@ Crowd-sourced imagery is increasingly important for urban mapping and visual loc
 
 ### Monocular Depth Estimation Models:
 As explained before, use separate environments for each model. 
-1. ZoeDepth :
-2. DepthPro:
+1. [ZoeDepth](https://github.com/isl-org/ZoeDepth) :
     ```
-    cd mast3r-v2/monocular_depth_models
+    cd mast3r-v2/monocular_depth_models/zoedepth
+    conda env create -n zoe --file environment.yml
+    conda activate zoe  
+    ```
+2. [DepthPro](https://github.com/apple/ml-depth-pro):
+    ```
+    cd mast3r-v2/monocular_depth_models/depthpro
     conda create -n depth-pro -y python=3.9
     conda activate depth-pro
     pip install -e .
     ```
-3. Depth Anything V2:
-    ``
-    cd mast3r-v2/monocular_depth_models
+3. [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2): 
+    ```
+    cd mast3r-v2/monocular_depth_models/depthanythingv2
     conda create --name depthanything python=3.9
     conda activate depthanything
     pip install -r requirements.txt
-    ``
-
+    ```
 
 # Dataset Preparation
 
@@ -95,7 +99,7 @@ This uses the manually selected pixels and cross-view (satellite) correspondence
 To finetune MASt3R, you must have a downloaded checkpoint stored locally and followed the [pre-processing steps](#trainvaltest1test2-splits--additional-supervision-data-required) i.e. generated ground truth depthmaps and pose labels, and also split the dataset into train/val/test1/test2.
 
 The `run_finetuning.sh` script runs finetuning and can be configured for different training and validation sets, the loss function can also be changed. Exact specifications to use:
-- MASt3R-DPT(Campus-->Ciampino2) *trained with regression loss*
+- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*
     ```
     SCENE_TRAIN1="campus_train0"
     SCENE_TRAIN2="campus_train1"
@@ -103,14 +107,17 @@ The `run_finetuning.sh` script runs finetuning and can be configured for differe
     TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)+VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN2', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
     TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
     ```
-- MASt3R-DPT(Campus-->Ciampino2) *trained with regression loss*
+- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*
     ```
     SCENE_TRAIN1="ciampino_train0"
     SCENE_VAL="ciampino_train1"
     TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
     TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
     ```
-- To train a model with confidence weighed regression loss, switch the loss function `TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0),alpha=0.2)"`
+- To train a model with confidence weighed regression loss, switch the loss function 
+    ```
+    TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0),alpha=0.2)"
+    ```
 - The training curves can be inspected using 
 
 After ensuring these specifications, run the `run_finetuning.sh` script from CLI. 
@@ -133,14 +140,11 @@ chmod+x run_evaluate.sh
 ```
 The `run_evaluate.sh` script will run PnP using a specified MASt3R checkpoint as both G and H. It also computes results using LiDAR and scaling methods specified (and configurable) in `my_scripts/evaluate_v5.py`. The output will be saved in the `OUTPUT_ROOT` under a folder named after the `scenes` used.
 
-1. `CHECKPOINT`: Specify model checkpoint (to compile results for fine-tuned model run using fine-tuned checkpoint) 
+1. `CHECKPOINT`: Specify model checkpoint (*to compile results for fine-tuned model run using fine-tuned checkpoint*) 
 2. `scenes`: `campus_train0`, `campus_train1`, `ciampino_train0`, `ciampino_train0`, `spagna_train0`  (trajectory/sequence)
 3. `conf_percentile` : to remove points with lower confidence
 4. `split`:  train, val, test1, test2, all
 
-
-git submodule add https://github.com/bakuljangley/Depth-Anything-V2.git monocular_depth_models/depthanythingv2
-git submodule add https://github.com/yourusername/another-model.git monocular_depth_models/model2
 
 Additionally, to apply scaled pre-computed from the training set (saved in `my_vbr_utils/train_scales.json`). Run:
 ```
@@ -151,15 +155,37 @@ chmod+x apply_train_scales.sh
 
 ## Using Monocular Depth Estimation Models as H and MASt3R as G
 
-1. Generating Depthmaps: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs.
-    1. ZoeDepth: 
-2. We use pre-computed depthmaps for efficiency. The script `my_scripts/evaluate_anydepth.py` allows you to add depthmaps from any source and combine them with MASt3R as G.
+1. **Generating Depthmaps**: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs. *Ensure that the location for `pairs_finetuning` should be at the root directory where the pairs are stored, and change output directory as required.*
+    1. ZoeDepth:
+        ```
+        cd monocular_depth_models/zoedepth
+        conda activate zoe
+        chmod+x vbr_depthmaps.sh #change pairs_finetuning, output directories in the bash file
+        ./vbr_depthmaps.sh
+        ```
+    2. DepthPro
+        ```
+        cd monocular_depth_models/depthpro
+        conda activate depthpro
+        chmod+x generate_vbr_depthmaps.sh #change pairs_finetuning, output directories in the bash file
+        ./generate_vbr_depthmaps.sh
+        ```
+    3. Depth Anything V2:
+        ```
+        cd monocular_depth_models/depthanythingv2/metric_depth
+        conda activate depthpro
+        chmod+x vbr_depthmaps.sh #change pairs_finetuning, output directories in the bash file
+        ./vbr_depthmaps.sh
+        ```
+2. **Running PnP**: The script `my_scripts/evaluate_anydepth.py` allows you to add depthmaps from any source and combine them with MASt3R as G.
 
-```
-chmod+x run_evaluate_anydepth.sh 
-./run_evaluate_anydepth.sh
-```
-*This will automatically run the script for all trajectories and does not need to be repeated.*
+    1. Change the location of the generated depthmaps (from step1) in the `my_scripts/evaluate_anydepth.py`.
+    2. Run: 
+        ```
+        chmod+x run_evaluate_anydepth.sh #change pairs_finetuning, output directories in the bash file
+        ./run_evaluate_anydepth.sh
+        ```
+        *This will automatically run the script for all trajectories and does not need to be repeated.*
 
 ## Bibliography
 

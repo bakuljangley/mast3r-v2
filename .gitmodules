@@ -5,3 +5,9 @@
 [submodule "monocular_depth_models/depthanythingv2"]
 	path = monocular_depth_models/depthanythingv2
 	url = https://github.com/bakuljangley/Depth-Anything-V2.git
+[submodule "monocular_depth_models/zoedepth"]
+	path = monocular_depth_models/zoedepth
+	url = https://github.com/bakuljangley/ZoeDepth
+[submodule "monocular_depth_models/depthpro"]
+	path = monocular_depth_models/depthpro
+	url = https://github.com/bakuljangley/Depth-Pro
