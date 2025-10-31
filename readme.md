@@ -44,6 +44,14 @@ As explained before, use separate environments for each model.
     pip install -r requirements.txt
     ```
 
+Unless indicated otherwise, the active conda environment is `mast3r`. For the subsequent sections, most of my code uses bash scripts that will require minor changes in path variables or settings (such as scene, hyper-params, etc.) need to be changed. To run a bash script use:
+
+```
+chmod+x <filename.sh>
+./<filename.sh>
+``` 
+
+
 # Dataset Preparation
 
 ## Downloading and Pre-Processing the VBR Rome Dataset
@@ -57,6 +65,7 @@ vbr convert kitti <input_directory/input_bag> <output_directory>
 
 Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset. This project only uses the following trajectories, convert them into KITTI format after downloading. The VBR dataset is built from multiple trajectories in each scene, my code treats each trajectory individually and then compiles per scene results afterwards (grouping trajectories, if necessary). 
 
+
 ### Anchor-Query Pair Mining (Optional)
 
 | Scene      | Trajectory                               | Sub-sampling (Query/Anchor) | Top n Anchors | Total Pairs | Valid Pairs (>200 Inliers) |
@@ -68,12 +77,27 @@ Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset.
 | Ciampino 2 | `ciampino_train1`                        | 20 / 10            | 7              | 2212         | 1992                        |
 
 
-```
-chmod+x mining.sh
-./mining.sh #the example script mines pairs for the ciampino1 scene
-```
+The `mining.sh` script can be used to generate mined pairs (also provided in `pairs_mining`). Running the mining script can take a long time over the entire dataset, it's recommended to use the pairs already generated. The indices of the anchor-query indices per scene compared are provided in `my_vbr_utils/vbr_sequences/<trajectory>.json`. 
+- `SCENE`= "ciampino_train1" #to evaluate on 
+- `DATASET_ROOT`="/datasets/vbr_slam"
+- `SEQUENCE_PATH`="my_vbr_utils/vbr_sequences/ciampino_train1.json"
+- `OUTPUT`="pairs_mining/ciampino_train1/ciampino_matches_inliers_fm.csv"
+- `TEMP`="pairs_mining/ciampino_train1/processed_pairs.txt" 
 
-The `mining.sh` script can be used to generate mined pairs (also provided in `pairs_mining`). Running the mining script can take a long time over the entire dataset, it's recommended to use the pairs already generated. The indices of the anchor-query indices compared are provided in `my_vbr_utils/vbr_sequences/<trajectory>.json`. 
+
+| Function | Script | Python | **CHANGE** |
+|-----------|-----------|-----------|-----------|
+| Row 1A    | Row 1B    | Row 1C    | Row 1D    |
+| Row 2A    | Row 2B    | Row 2C    | Row 2D    |
+| Row 3A    | Row 3B    | Row 3C    | Row 3D    |
+
+
+| Function | Script | Python | **CHANGE** |
+|-----------|-----------|-----------|-----------|
+| Mine Anchor-Query Pairs    | mining.sh    | my_scripts/mining.py    | 
+    |
+
+
 
 ### Train/Val/Test1/Test2 Splits + Additional Supervision Data (Required)
 
@@ -138,7 +162,7 @@ After ensuring these specifications, run the `run_finetuning.sh` script from CLI
 
 # Experiments on VBR
 
-This section outlines how to re-produce the results of Relative Pose Estimation on the VBR Rome dataset.
+This section outlines how to re-produce the results of Relative Pose Estimation on the VBR Rome dataset. For all experiments, I use bash scripts to execute python files. To re-produce my results
 
 
 ## Using MASt3R as H and G 
@@ -200,8 +224,6 @@ chmod+x apply_train_scales.sh
 
 ## Compiling Results
 
-To 
-
 
 # Experiments on Mapillary Images 
 
@@ -249,3 +271,5 @@ This work uses original code provided by the official implementation of `Groundi
     url={https://openreview.net/forum?id=5uw1GRBFoT}
 } 
 ```
+
+
