@@ -1,7 +1,7 @@
 [submodule "dust3r"]
 	path = dust3r
 	url = https://github.com/bakuljangley/dust3r.git
-	branch = cvpr
+	branch = main
 [submodule "monocular_depth_models/depthanythingv2"]
 	path = monocular_depth_models/depthanythingv2
 	url = https://github.com/bakuljangley/Depth-Anything-V2.git
@@ -14,3 +14,4 @@
 [submodule "mapillary"]
 	path = mapillary
 	url = https://github.com/bakuljangley/mapillary_utils.git
+	
