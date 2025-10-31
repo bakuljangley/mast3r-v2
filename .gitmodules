@@ -11,3 +11,4 @@
 [submodule "monocular_depth_models/depthpro"]
 	path = monocular_depth_models/depthpro
 	url = https://github.com/bakuljangley/Depth-Pro
+
