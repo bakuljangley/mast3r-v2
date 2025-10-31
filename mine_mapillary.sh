@@ -13,7 +13,7 @@ MAPILLARY_ROOT="/home/bjangley/VPR/mapillary_utils/vbr_mapillary_overlap"
 OUTPUT_ROOT="/home/bjangley/VPR/mast3r-v2/pairs_mapillary"
 TOP_N=3
 
-SCENES=("spagna_train0" "campus_train0" "campus_train1")
+SCENES=("spagna_train0" "campus_train0")
 
 # ========== RUN ==========
 for SCENE in "${SCENES[@]}"; do

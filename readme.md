@@ -5,7 +5,7 @@
 - Student Name: **Bakul Jangley**
 - Supervisors: **Prof. Julian Kooij, Mubariz Zaffar** (Intelligent Vehicles Group)
 
-Crowd-sourced imagery is increasingly important for urban mapping and visual localization. However, its reliability is limited by GPS inaccuracies and heterogeneous capture condi- tions, including device variability, viewpoint differences, illumi- nation changes, and temporal shifts. In these settings, achieving metric-scale pose estimation remains a central challenge. Deep Learning-based pose estimation models address this problem by learning to estimate the 6-DoF pose using geometric cues between image views and metric supervision during training on large datasets. This encourages spatial consistency and supports generalization across diverse conditions. Recent learning--based architectures, often based on vision transformer encoders, approach the task through unified multi-task frameworks that jointly predict metric depthmaps and 2D–2D correspondences, with relative pose estimated downstream. This thesis evaluates whether such frameworks predict accurate metric depthmaps under domain shifts. Experiments show that, even with scale correction through data-driven fine-tuning with metric supervision, depth predictions from multi-task relative pose estimation models fail to generalize reliably to out-of-domain environments. In contrast, monocular models, trained on significantly larger and more varied datasets, demonstrate strong zero-shot reliability for metric depth prediction. A hybrid pipeline is proposed that combines the geometric consistency of relative pose models with the stable metric cues of monocular models, enabling robust pose estimation in crowd-sourced outdoor environments.
+Crowd-sourced imagery is increasingly important for urban mapping and visual localization. However, its reliability is limited by GPS inaccuracies and heterogeneous capture condi- tions, including device variability, viewpoint differences, illumination changes, and temporal shifts. In these settings, achieving metric-scale pose estimation remains a central challenge. Deep Learning-based pose estimation models address this problem by learning to estimate the 6-DoF pose using geometric cues between image views and metric supervision during training on large datasets. This encourages spatial consistency and supports generalization across diverse conditions. Recent learning--based architectures, often based on vision transformer encoders, approach the task through unified multi-task frameworks that jointly predict metric depthmaps and 2D–2D correspondences, with relative pose estimated downstream. This thesis evaluates whether such frameworks predict accurate metric depthmaps under domain shifts. Experiments show that, even with scale correction through data-driven fine-tuning with metric supervision, depth predictions from multi-task relative pose estimation models fail to generalize reliably to out-of-domain environments. In contrast, monocular models, trained on significantly larger and more varied datasets, demonstrate strong zero-shot reliability for metric depth prediction. A hybrid pipeline is proposed that combines the geometric consistency of relative pose models with the stable metric cues of monocular models, enabling robust pose estimation in crowd-sourced outdoor environments.
 
 # Environment Set Up
 
@@ -23,7 +23,7 @@ Crowd-sourced imagery is increasingly important for urban mapping and visual loc
 
 ### Monocular Depth Estimation Models:
 As explained before, use separate environments for each model. 
-1. [ZoeDepth](https://github.com/isl-org/ZoeDepth) :
+1. [ZoeDepth](https://github.com/isl-org/ZoeDepth):
     ```
     cd mast3r-v2/monocular_depth_models/zoedepth
     conda env create -n zoe --file environment.yml
@@ -46,7 +46,7 @@ As explained before, use separate environments for each model.
 
 # Dataset Preparation
 
-### Downloading and Pre-Processing the VBR Rome Dataset
+## Downloading and Pre-Processing the VBR Rome Dataset
 
 ```
 pip install vbr-devkit
@@ -55,7 +55,7 @@ vbr download <sequence_name> <save_directory>
 vbr convert kitti <input_directory/input_bag> <output_directory>
 ```
 
-Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset. This project only uses the following trajectories, convert them into KITTI format after downloading. The VBR dataset is built from multiple trajectories in each scene, my code treats each trajectory individually and then compiles per scene results afterwards (grouping trajectories, if necessary).
+Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset. This project only uses the following trajectories, convert them into KITTI format after downloading. The VBR dataset is built from multiple trajectories in each scene, my code treats each trajectory individually and then compiles per scene results afterwards (grouping trajectories, if necessary). 
 
 ### Anchor-Query Pair Mining (Optional)
 
@@ -85,6 +85,19 @@ chmod+x prepare_mast3r_dataset.sh
 ```
 *change the save directories and top_n parameter. This process is quite fast and using the mined pairs from `pairs_mining` would allow the code to work. 
 
+## Mapillary Images
+1. **Download**:
+        If you want to download from scratch (optional), this repository already provides the Mapillary images used.
+        ```
+        cd mapillary
+        python vbr_downloads.py #Using the official API
+        ```
+        The code uses my personal authentication token from the Mapillary website, if the download does not work or stalls, the best solution is to generate your own and replace it in `mapillary/utils.py`. The download will be inside `mapillary/vbr_mapillary_overlap`
+2. **Mining Anchor-Query Pairs**: Run the `mine_mapillary.sh` bash script after replacing `MAPILLARY_ROOT` and `OUTPUT_ROOT`
+
+
+
+
 ### VBR Global Alignment 
 
 To generate GPS positions for VBR trajectories: 
@@ -93,6 +106,8 @@ chmod+x generate_global_trajectories.sh
 ./generate_global_trajectories.sh
 ```
 This uses the manually selected pixels and cross-view (satellite) correspondences provided in `my_vbr_utils/GPSalignment`. 
+
+For trouble shooting or additional details about the dataset setup code, refer to [this](https://github.com/bakuljangley/mast3r-v2/blob/main/my_vbr_utils/vbrDatasetreadme.md).
 
 # Fine-tuning MASt3R-DPT
 
@@ -123,39 +138,36 @@ The `run_finetuning.sh` script runs finetuning and can be configured for differe
 After ensuring these specifications, run the `run_finetuning.sh` script from CLI. 
 
 
-# Experiments
+# Experiments on VBR
 
-This section explains how to reproduce the results presented. There are mainly 3 different variants of the depth prediction network used in this work:
-1. **MASt3R-DPT** 
-2. **MASt3R-DPT (scaled)**   
-2. **MASt3R-DPT (finetuned)**
-3. **Monocular Depth Prediction Networks**
-- Oracle (LiDAR): ground truth depth map 
+This section outlines how to re-produce the results of Relative Pose Estimation on the VBR Rome dataset.
 
-## Relative Pose Estimation Using MASt3R as G and H 
 
+## Using MASt3R as H and G 
+
+The `run_evaluate.sh` script will run PnP using a specified MASt3R checkpoint as both G and H.
 ```
 chmod+x run_evaluate.sh 
-./run_evaluate.sh
+./run_evaluate.sh 
 ```
-The `run_evaluate.sh` script will run PnP using a specified MASt3R checkpoint as both G and H. It also computes results using LiDAR and scaling methods specified (and configurable) in `my_scripts/evaluate_v5.py`. The output will be saved in the `OUTPUT_ROOT` under a folder named after the `scenes` used.
+It also computes results (AbsRel, Translation Error and Rotation error) using LiDAR and scaling methods specified (and configurable) in `my_scripts/evaluate_v5.py`. The output will be saved in the `OUTPUT_ROOT` under a folder named after the `scenes` used.
 
 1. `CHECKPOINT`: Specify model checkpoint (*to compile results for fine-tuned model run using fine-tuned checkpoint*) 
 2. `scenes`: `campus_train0`, `campus_train1`, `ciampino_train0`, `ciampino_train0`, `spagna_train0`  (trajectory/sequence)
-3. `conf_percentile` : to remove points with lower confidence
-4. `split`:  train, val, test1, test2, all
-
+3. `conf_percentile` : to remove points with lower confidence else 0 
+4. `split`:  all (can also be run just for train, val, test1, test2)
 
 Additionally, to apply scaled pre-computed from the training set (saved in `my_vbr_utils/train_scales.json`). Run:
 ```
 chmod+x apply_train_scales.sh
 ./apply_train_scales.sh
 ```
-*both `run_evaluate.sh` and `apply_train_scales.sh` will need to be re-run for each of the 5 trajectories selected.*
+*Both `run_evaluate.sh` and `apply_train_scales.sh` will need to be re-run for each of the 5 trajectories, you could run all scenes in one go but it's not recommended as each scene takes a while, it's better to run multiple processes for different `scenes` in separate terminals.*
+
 
 ## Using Monocular Depth Estimation Models as H and MASt3R as G
 
-1. **Generating Depthmaps**: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs. *Ensure that the location for `pairs_finetuning` should be at the root directory where the pairs are stored, and change output directory as required.*
+1. **Generating Depthmaps**: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs. *For each bash script being run, ensure that the location for `pairs_finetuning` should be at the root directory where the pairs are stored, and change output directory as required.*
     1. ZoeDepth:
         ```
         cd monocular_depth_models/zoedepth
@@ -186,6 +198,16 @@ chmod+x apply_train_scales.sh
         ./run_evaluate_anydepth.sh
         ```
         *This will automatically run the script for all trajectories and does not need to be repeated.*
+
+
+## Compiling Results
+
+To 
+
+
+# Experiments on Mapillary Images 
+
+
 
 ## Bibliography
 
