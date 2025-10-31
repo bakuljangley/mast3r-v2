@@ -1,0 +1,6 @@
+results_finetuning/** filter=lfs diff=lfs merge=lfs -text
+pairs_mining/** filter=lfs diff=lfs merge=lfs -text
+mapillary/vbr_mapillary_overlap/** filter=lfs diff=lfs merge=lfs -text
+results_localization/** filter=lfs diff=lfs merge=lfs -text
+results_localization2/** filter=lfs diff=lfs merge=lfs -text
+results_mapillary/** filter=lfs diff=lfs merge=lfs -text
