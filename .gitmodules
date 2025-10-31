@@ -12,3 +12,6 @@
 	path = monocular_depth_models/depthpro
 	url = https://github.com/bakuljangley/Depth-Pro
 
+[submodule "mapillary"]
+	path = mapillary
+	url = https://github.com/bakuljangley/mapillary_utils.git
