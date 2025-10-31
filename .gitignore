@@ -139,7 +139,7 @@ checkpoints_v3/
 #ignore specific folders
 
 
-results_finetuning/
+# results_finetuning/
 
 pairs_mining/
 pairs_finetuning/
