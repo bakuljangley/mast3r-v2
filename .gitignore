@@ -138,11 +138,13 @@ checkpoints_v3/
 
 #ignore specific folders
 
-pairs_finetuning/
+
 results_finetuning/
 
 pairs_mining/
 results_localization/
+results_localization2/
+results_mapillary/
 
 *.ipynb_checkpoints
 *.ipynb

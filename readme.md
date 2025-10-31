@@ -87,15 +87,13 @@ chmod+x prepare_mast3r_dataset.sh
 
 ## Mapillary Images
 1. **Download**:
-        If you want to download from scratch (optional), this repository already provides the Mapillary images used.
-        ```
-        cd mapillary
-        python vbr_downloads.py #Using the official API
-        ```
-        The code uses my personal authentication token from the Mapillary website, if the download does not work or stalls, the best solution is to generate your own and replace it in `mapillary/utils.py`. The download will be inside `mapillary/vbr_mapillary_overlap`
-2. **Mining Anchor-Query Pairs**: Run the `mine_mapillary.sh` bash script after replacing `MAPILLARY_ROOT` and `OUTPUT_ROOT`
-
-
+    If you want to download from scratch (optional), this repository already provides the Mapillary images used.
+    ```
+    cd mapillary
+    python vbr_downloads.py #Using the official API
+    ```
+    The code uses my personal authentication token from the Mapillary website, if the download does not work or stalls, the best solution is to generate your own and replace it in `mapillary/utils.py`. 
+2. **Mining Anchor-Query Pairs**: Run the `mine_mapillary.sh` bash script after replacing `MAPILLARY_ROOT` and `OUTPUT_ROOT`.
 
 
 ### VBR Global Alignment 
@@ -207,6 +205,8 @@ To
 
 # Experiments on Mapillary Images 
 
+1. **Run PnP**: Use the `localize_mapillary.sh` script to localize Mapillary images, change the `MAPILLARY_ROOT`, `PAIRS_ROOT` and `OUTPUT_ROOT` to suitable locations.
+2. **Inspect Results:** 
 
 
 ## Bibliography

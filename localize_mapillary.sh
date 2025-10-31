@@ -8,7 +8,7 @@ export NUMEXPR_NUM_THREADS=4
 export OPENBLAS_NUM_THREADS=4
 
 DATASET_ROOT="/datasets/vbr_slam"
-MAPILLARY_ROOT="/home/bjangley/VPR/mapillary_utils/vbr_mapillary_downloads"
+MAPILLARY_ROOT="/home/bjangley/VPR/mapillary/vbr_mapillary_overlap"
 PAIRS_ROOT="/home/bjangley/VPR/mast3r-v2/pairs_mapillary"   
 OUTPUT_ROOT="/home/bjangley/VPR/mast3r-v2/results_mapillary"
 TEMP_PREFIX="${OUTPUT_ROOT}/temp"
@@ -20,7 +20,6 @@ MIN_INLIERS=200
 SCENES=(
   "spagna_train0"
   "campus_train0"
-  "campus_train1"
 )
 
 echo "---------------- CONFIG ----------------"
