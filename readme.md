@@ -66,7 +66,7 @@ vbr convert kitti <input_directory/input_bag> <output_directory>
 Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset. This project only uses the following trajectories, convert them into KITTI format after downloading. The VBR dataset is built from multiple trajectories in each scene, my code treats each trajectory individually and then compiles per scene results afterwards (grouping trajectories, if necessary). 
 
 
-### Anchor-Query Pair Mining (Optional)
+### 1. Anchor-Query Pair Mining (Optional)
 
 | Scene      | Trajectory                               | Sub-sampling (Query/Anchor) | Top n Anchors | Total Pairs | Valid Pairs (>200 Inliers) |
 |------------|------------------------------------------|--------------------|----------------|--------------|-----------------------------|
@@ -78,36 +78,23 @@ Download the [VBR Rome](https://github.com/rvp-group/vbr-devkit) (2025) dataset.
 
 
 The `mining.sh` script can be used to generate mined pairs (also provided in `pairs_mining`). Running the mining script can take a long time over the entire dataset, it's recommended to use the pairs already generated. The indices of the anchor-query indices per scene compared are provided in `my_vbr_utils/vbr_sequences/<trajectory>.json`. 
-- `SCENE`= "ciampino_train1" #to evaluate on 
-- `DATASET_ROOT`="/datasets/vbr_slam"
-- `SEQUENCE_PATH`="my_vbr_utils/vbr_sequences/ciampino_train1.json"
-- `OUTPUT`="pairs_mining/ciampino_train1/ciampino_matches_inliers_fm.csv"
-- `TEMP`="pairs_mining/ciampino_train1/processed_pairs.txt" 
+- `SCENE`= "ciampino_train1" #trajectory to evaluate on 
+- `DATASET_ROOT`="/datasets/vbr_slam" #root dataset download directory
+- `SEQUENCE_PATH`="my_vbr_utils/vbr_sequences/ciampino_train1.json" #path to the scene_data
+
+This will create an output directory `pairs_mining/<scene>/` and store all anchor-query pairs and top-n pairs as `.csv` files. 
 
 
-| Function | Script | Python | **CHANGE** |
-|-----------|-----------|-----------|-----------|
-| Row 1A    | Row 1B    | Row 1C    | Row 1D    |
-| Row 2A    | Row 2B    | Row 2C    | Row 2D    |
-| Row 3A    | Row 3B    | Row 3C    | Row 3D    |
+### 2. Train/Val/Test1/Test2 Splits + Additional Supervision Data (Required)
 
+To generate dataset splits (also provided in `pairs_finetuning`) and generating supervision labels for finetuning (save VBR depthmaps as `.npy` files and re-generating pose labels) use the `prepare_mast3r_dataset.sh` script.
+- `DATASET_ROOT`="/datasets/vbr_slam" #dataset root 
+- `DATASET_SCENE`="ciampino_train0" #dataset scene 
+- `TOP_N`=5 #top_n used 
+- `PAIRS_ROOT`="/pairs_mining/" #path to mined pairs root  
+- `OUTPUT_DIR`="/pairs_finetuning/" #output pairs root (makes scene-wise sub-folders containing `.txt` files for each split)
+- `OUTPUT_ROOT`="/vbr" #path to save the depthmaps and poses 
 
-| Function | Script | Python | **CHANGE** |
-|-----------|-----------|-----------|-----------|
-| Mine Anchor-Query Pairs    | mining.sh    | my_scripts/mining.py    | 
-    |
-
-
-
-### Train/Val/Test1/Test2 Splits + Additional Supervision Data (Required)
-
-To generate dataset splits (also provided in `pairs_finetuning`) and generating supervision labels for finetuning (save VBR depthmaps as `.npy` files and re-generating pose labels):
-
-```
-chmod+x prepare_mast3r_dataset.sh
-./prepare_mast3r_dataset.sh 
-```
-*change the save directories and top_n parameter. This process is quite fast and using the mined pairs from `pairs_mining` would allow the code to work. 
 
 ## Mapillary Images
 1. **Download**:
@@ -117,26 +104,19 @@ chmod+x prepare_mast3r_dataset.sh
     python vbr_downloads.py #Using the official API
     ```
     The code uses my personal authentication token from the Mapillary website, if the download does not work or stalls, the best solution is to generate your own and replace it in `mapillary/utils.py`. 
-2. **Mining Anchor-Query Pairs**: Run the `mine_mapillary.sh` bash script after replacing `MAPILLARY_ROOT` and `OUTPUT_ROOT`.
+2. **Mining Anchor-Query Pairs**: Run the `mine_mapillary.sh` bash script after replacing `MAPILLARY_ROOT` and `OUTPUT_ROOT`. 
 
 
 ### VBR Global Alignment 
 
-To generate GPS positions for VBR trajectories: 
-```
-chmod+x generate_global_trajectories.sh
-./generate_global_trajectories.sh
-```
-This uses the manually selected pixels and cross-view (satellite) correspondences provided in `my_vbr_utils/GPSalignment`. 
-
-For trouble shooting or additional details about the dataset setup code, refer to [this](https://github.com/bakuljangley/mast3r-v2/blob/main/my_vbr_utils/vbrDatasetreadme.md).
+To generate GPS positions for VBR trajectories use `generate_global_trajectories.sh` (change the `DATASET_ROOT` ,`UTILS_ROOT` and `SAVE_ROOT`, if required). This uses the manually selected pixels and cross-view (satellite) correspondences provided in `my_vbr_utils/GPSalignment`. For trouble shooting or additional details about the dataset setup code, refer to [this](https://github.com/bakuljangley/mast3r-v2/blob/main/my_vbr_utils/vbrDatasetreadme.md).
 
 # Fine-tuning MASt3R-DPT
 
 To finetune MASt3R, you must have a downloaded checkpoint stored locally and followed the [pre-processing steps](#trainvaltest1test2-splits--additional-supervision-data-required) i.e. generated ground truth depthmaps and pose labels, and also split the dataset into train/val/test1/test2.
 
 The `run_finetuning.sh` script runs finetuning and can be configured for different training and validation sets, the loss function can also be changed. Exact specifications to use:
-- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*
+- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*.
     ```
     SCENE_TRAIN1="campus_train0"
     SCENE_TRAIN2="campus_train1"
@@ -144,20 +124,19 @@ The `run_finetuning.sh` script runs finetuning and can be configured for differe
     TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)+VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN2', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
     TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
     ```
-- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*
+- **MASt3R-DPT (Campus &rarr; Ciampino2)** *trained with regression loss*.
     ```
     SCENE_TRAIN1="ciampino_train0"
     SCENE_VAL="ciampino_train1"
     TRAIN_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_TRAIN1', split='train', pairs_dir='$PAIRS_PATH', depth_dir='$DEPTH_DIR' , pose_dir='$POSE_DIR', resolution=[(512, 384), (512, 336), (512, 288), (512, 256), (512, 160)], aug_crop=False)"
     TRAIN_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0)"
     ```
-- To train a model with confidence weighed regression loss, switch the loss function 
+- To train a model with confidence weighed regression loss, switch the loss function. 
     ```
     TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0),alpha=0.2)"
     ```
+- CAUTION: Inspect the paths to the checkpoints, path to pairs and supervision labels, learning rates and output directory. 
 - The training curves can be inspected using 
-
-After ensuring these specifications, run the `run_finetuning.sh` script from CLI. 
 
 
 # Experiments on VBR
@@ -167,29 +146,23 @@ This section outlines how to re-produce the results of Relative Pose Estimation 
 
 ## Using MASt3R as H and G 
 
-The `run_evaluate.sh` script will run PnP using a specified MASt3R checkpoint as both G and H.
-```
-chmod+x run_evaluate.sh 
-./run_evaluate.sh 
-```
-It also computes results (AbsRel, Translation Error and Rotation error) using LiDAR and scaling methods specified (and configurable) in `my_scripts/evaluate_v5.py`. The output will be saved in the `OUTPUT_ROOT` under a folder named after the `scenes` used.
+The `run_evaluate.sh` script will run PnP using a specified MASt3R checkpoint as both G and H. It also computes results (AbsRel, Translation Error and Rotation error) using LiDAR and scaling methods specified (and configurable) in `my_scripts/evaluate_v5.py`.  
 
-1. `CHECKPOINT`: Specify model checkpoint (*to compile results for fine-tuned model run using fine-tuned checkpoint*) 
-2. `scenes`: `campus_train0`, `campus_train1`, `ciampino_train0`, `ciampino_train0`, `spagna_train0`  (trajectory/sequence)
-3. `conf_percentile` : to remove points with lower confidence else 0 
-4. `split`:  all (can also be run just for train, val, test1, test2)
+- `SCENES`="ciampino_train0"
+- `DATASET_ROOT`="/datasets/vbr_slam"
+- `PAIRS_PATH`="pairs_finetuning/"  #root directory to the pairs
+- `SPLIT`="all" 
+- `OUTPUT_ROOT`="results_localization/original/" (The output will be saved in the `OUTPUT_ROOT` under a folder named after the `scenes` used.)
+- `CHECKPOINT` Specify model checkpoint (*to compile results for fine-tuned model run using fine-tuned checkpoint*) 
+- CAUTION: In the final command, ensure the `conf_percentile` is also correctly set (`0` for no filtering).
+- To apply scaled pre-computed from the training set (saved in `my_vbr_utils/train_scales.json`), run `apply_train_scales.sh`. 
 
-Additionally, to apply scaled pre-computed from the training set (saved in `my_vbr_utils/train_scales.json`). Run:
-```
-chmod+x apply_train_scales.sh
-./apply_train_scales.sh
-```
 *Both `run_evaluate.sh` and `apply_train_scales.sh` will need to be re-run for each of the 5 trajectories, you could run all scenes in one go but it's not recommended as each scene takes a while, it's better to run multiple processes for different `scenes` in separate terminals.*
 
 
 ## Using Monocular Depth Estimation Models as H and MASt3R as G
 
-1. **Generating Depthmaps**: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs. *For each bash script being run, ensure that the location for `pairs_finetuning` should be at the root directory where the pairs are stored, and change output directory as required.*
+1. **Generating Depthmaps**: After setting up environments for the metric monocular depth estimation models as described [earlier](#monocular-depth-estimation-models), pre-compute depthmaps for the final anchor-query pairs. *For each bash script, ensure that the location for `PAIRS_BASE_PATH` should be at the root directory where the the fine-tuning splits are stored, and change output directory `OUTPUT_BASE_DIR` as required.*
     1. ZoeDepth:
         ```
         cd monocular_depth_models/zoedepth
@@ -211,18 +184,14 @@ chmod+x apply_train_scales.sh
         chmod+x vbr_depthmaps.sh #change pairs_finetuning, output directories in the bash file
         ./vbr_depthmaps.sh
         ```
-2. **Running PnP**: The script `my_scripts/evaluate_anydepth.py` allows you to add depthmaps from any source and combine them with MASt3R as G.
+2. **Running PnP**: Change the location of the generated depthmaps (from step1) in the `my_scripts/evaluate_anydepth.py` and use `run_evaluate_anydepth.sh`. Edit the output and checkpoint paths. 
 
-    1. Change the location of the generated depthmaps (from step1) in the `my_scripts/evaluate_anydepth.py`.
-    2. Run: 
-        ```
-        chmod+x run_evaluate_anydepth.sh #change pairs_finetuning, output directories in the bash file
-        ./run_evaluate_anydepth.sh
-        ```
-        *This will automatically run the script for all trajectories and does not need to be repeated.*
-
+    *This will automatically run the script for all trajectories and does not need to be repeated.*
 
 ## Compiling Results
+
+
+
 
 
 # Experiments on Mapillary Images 
@@ -273,3 +242,110 @@ This work uses original code provided by the official implementation of `Groundi
 ```
 
 
+# Output Generation
+This section broadly explains the expected behaviour upon pairs generation and directory structure to expect the results in. The code that compiles the results is confusing to read, these instructions are to ensure that the output directory structure is consistent.
+
+## PnP Output
+
+1. **Using LiDAR, MASt3R, and MASt3R (Scaled with LiDAR at Test Time)**  
+
+    All PnP computations follow the logic in `my_scripts/evaluate_v5.py`, where the `METHOD_CONFIG` defines the different **H functions**.  
+    Each method (Oracle, Scaling, MASt3R) generates separate `.csv` result files.
+
+    - Run this using the `run_evaluate.sh` script (as described [earlier](#using-mast3r-as-h-and-g)). Specify the output directory as:  
+        ```
+        OUTPUT_ROOT="<results>/<model_type>/"
+        ```
+    - Use distinct `model_name` values to:
+        - Apply **train-set scales**
+        - Use **fine-tuned models**
+        - Change **confidence thresholds**
+        - Or run with the **original pre-trained checkpoint**
+    - *Example:* If `OUTPUT_ROOT="results_localization/original/"`, results will be stored as:
+        ```
+        results_localization/
+        ├── original/
+        │   ├── campus_train0/
+        │   ├── campus_train1/
+        │   ├── ciampino_train0/
+        │   ├── ciampino_train1/
+        │   ├── spagna_train0/
+        │   ├── spagna_train0/
+        │   │   ├── lidar.csv
+        │   │   ├── mast3r.csv
+        │   │   ├── mast3r_scaled_icp.csv
+        │   │   ├── mast3r_scaled_v2.csv
+        │   │   ├── mast3r_scaled_v3.csv
+        │   │   └── mast3r_scaled_v4.csv
+        │   └── temp_spagna_train0_processed_pairs.txt
+        ```
+2. **Monocular Depth Prediction Models as H** : Use the same `OUTPUT_ROOT` as the pre-trained MASt3R checkpoint to append monocular model results to the same directory.
+
+    ```
+    results_localization/
+    ├── original/
+    │   ├── campus_train0/
+    │   ├── campus_train1/
+    │   ├── ciampino_train0/
+    │   ├── ciampino_train1/
+    │   ├── spagna_train0/
+    │   ├── spagna_train0/
+    │   │   ├── anydepth80.csv ## 
+    │   │   ├── depthpro.csv. ##
+    │   │   ├── lidar.csv
+    │   │   ├── mast3r.csv
+    │   │   ├── mast3r_scaled_icp.csv
+    │   │   ├── mast3r_scaled_v2.csv
+    │   │   ├── mast3r_scaled_v3.csv
+    │   │   └── mast3r_scaled_v4.csv
+    │   │   └── zoedepth.csv ##
+    │   └── temp_spagna_train0_processed_pairs.txt
+    ```
+
+## Pairs Generation 
+1. **Mining Anchor-Query Pairs in VBR**: Example output using `mining.sh` will look like this
+    ```
+    pairs_mining/
+    ├── campus_train0
+    │   ├── matches_inliers_fm.csv #all compared pairs
+    │   ├── matches_inliers_fm_top10_anchors_per_query.csv #top_n pairs
+    │   └── processed_pairs.txt
+    ├── campus_train1
+    ├── ciampino_train0
+    ├── ciampino_train1
+    └── spagna_train0
+    ```
+2. **Train/Val/Test1/Test2**: Pairs after pre-processing and shuffling would look like this
+    ```
+    pairs_finetuning/
+    ├── campus_train0
+    │   ├── all_pairs.txt
+    │   ├── test1_pairs.txt
+    │   ├── test2_pairs.txt
+    │   ├── train_pairs.txt
+    │   └── val_pairs.txt
+    ├── campus_train1
+    ├── ciampino_train0
+    ├── ciampino_train1
+    └── spagna_train0
+    ```
+    Additionally, the output for the depthmaps and pose would be organised like this:
+    ```
+    vbr/
+    ├── poses/
+    │   ├── campus_train0.txt #these labels are interpolated to the image timestamps to avoid computation at run-time 
+    │   ├── campus_train1.txt
+    │   ├── ciampino_train0.txt
+    │   ├── ciampino_train1.txt
+    │   └── spagna_train0.txt
+    └── depths/ 
+        ├── campus_train0/ #folders containing .npy depthmaps
+        ├── campus_train1/
+        ├── ciampino_train0/
+        ├── ciampino_train1/
+        └── spagna_train0/
+    ```
+    Depthmaps generated using monocular models are also stored in the same format.
+## Extra : Mapillary
+
+tree results_localization/ -L 2 --dirsfirst

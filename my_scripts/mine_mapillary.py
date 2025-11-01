@@ -26,7 +26,6 @@ SCENE_TO_SEQUENCES = {
             [23861, 23883, 5],
             [2531, 2600, 5],
         ],
-        # "lLTFtBmvxOHyK7oYAUzbq9": [[37300, 41500, 50]],
     },
     "campus_train0": {
         "5kb1M1svQmCdlwVYX6iP4Q": [[11200, 11475, 10]],

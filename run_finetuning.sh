@@ -2,9 +2,10 @@
 
 # --- User Configurable Paths ---
 ROOT="/datasets/vbr_slam/"
-PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/"
-DEPTH_DIR="/home/bjangley/VPR/vbr/depths"
-POSE_DIR="/home/bjangley/VPR/vbr/poses"
+PAIRS_PATH="/home/bjangley/VPR/mast3r-v2/pairs_finetuning/" #root directory to the pairs generated for finetuning
+VBR_LABELS="/home/bjangley/VPR/vbr" #path to prepared depthmap and pose folder
+DEPTH_DIR="${VBR_LABELS}/depths" 
+POSE_DIR="${VBR_LABELS}/poses"
 
 SCENE_TRAIN1="campus_train0"
 SCENE_TRAIN2="campus_train1"
@@ -18,6 +19,18 @@ TEST_DATASET="VBRPairsDataset(root_dir='$ROOT',scene='$SCENE_VAL', split='val', 
 # --- Loss Function ---
 TRAIN_CRITERION="ConfLoss(Regr3D(L21, norm_mode='?avg_dis', gt_scale=True, sky_loss_value=0),alpha=0.2)"
 # TEST_CRITERION="Regr3D(L21, norm_mode='?avg_dis', gt_scale=True)"
+
+# --- Pre-trained Model Path ---
+PRETRAINED="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
+
+# --- Output Directory ---
+OUTPUT_DIR_CHECKPOINTS="checkpoints_v1/ciampino1_ciampino2_lr5e5_3e6"
+
+# --- Learning Rates ---
+LR=5e-5
+MIN_LR=3e-06
+
+
 # --- Model Arguments ---
 MODEL="AsymmetricMASt3R(
     patch_embed_cls='PatchEmbedDust3R',
@@ -37,23 +50,19 @@ MODEL="AsymmetricMASt3R(
     desc_conf_mode=('exp', 0, inf),
     landscape_only=False
 )"
-##pretrained model path
-PRETRAINED="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
+
 
 # --- Training Hyperparameters ---
 BATCH_SIZE=8
 EPOCHS=20
 ACCUM_ITER=4
-LR=5e-5
-MIN_LR=3e-06
 WARMUP_EPOCHS=0
 SAVE_FREQ=1
 KEEP_FREQ=1
 EVAL_FREQ=1
 WEIGHT_DECAY=0.05
 export CUDA_VISIBLE_DEVICES=7
-# --- Output Directory ---
-OUTPUT_DIR_CHECKPOINTS="checkpoints_v1/ciampino1_ciampino2_lr5e5_3e6"
+
 
 # --- Launch Training ---
 torchrun --nproc_per_node=1 --master_port=29501 train.py \

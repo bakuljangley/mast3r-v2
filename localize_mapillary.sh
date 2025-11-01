@@ -11,8 +11,9 @@ DATASET_ROOT="/datasets/vbr_slam"
 MAPILLARY_ROOT="/home/bjangley/VPR/mapillary/vbr_mapillary_overlap"
 PAIRS_ROOT="/home/bjangley/VPR/mast3r-v2/pairs_mapillary"   
 OUTPUT_ROOT="/home/bjangley/VPR/mast3r-v2/results_mapillary"
-TEMP_PREFIX="${OUTPUT_ROOT}/temp"
 CHECKPOINT="/home/bjangley/VPR/mast3r-v2/checkpoints_v0/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
+TEMP_PREFIX="${OUTPUT_ROOT}/temp"
+
 
 CONF_PERCENTILE=0
 MIN_INLIERS=200

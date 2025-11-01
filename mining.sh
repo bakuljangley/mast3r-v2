@@ -1,10 +1,16 @@
 #!/bin/bash
 
-SCENE="ciampino_train1" #to evaluate on
+
+### --- CONFIG --- ###
+#Remember to edit anchor-query steps and top_n per scene
+SCENE="ciampino_train1" # to evaluate on
 DATASET_ROOT="/datasets/vbr_slam"
-SEQUENCE_PATH="my_vbr_utils/vbr_sequences/ciampino_train1.json"
-OUTPUT="pairs_mining/ciampino_train1/ciampino_matches_inliers_fm.csv"
-TEMP="pairs_mining/ciampino_train1/processed_pairs.txt" 
+### --- CONFIG --- ###
+
+#derived paths 
+SEQUENCE_PATH="my_vbr_utils/vbr_sequences/${SCENE}.json" #path to sequence mining indices 
+OUTPUT="pairs_mining/${SCENE}/matches_inliers_fm.csv" 
+TEMP="pairs_mining/${SCENE}/processed_pairs.txt"
 
 export CUDA_VISIBLE_DEVICES=4
 
@@ -17,4 +23,3 @@ python my_scripts/mining.py \
   --output "$OUTPUT" \
   --top_n 7 \
   --temp_file "$TEMP"
-
