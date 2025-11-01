@@ -141,9 +141,9 @@ checkpoints_v3/
 
 # results_finetuning/
 
-pairs_mining/
+# pairs_mining/
 pairs_finetuning/
-mapillary/vbr_mapillary_overlap/
+# mapillary/vbr_mapillary_overlap/
 results_localization/
 results_localization2/
 results_mapillary/
