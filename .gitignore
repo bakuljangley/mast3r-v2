@@ -149,7 +149,7 @@ results_localization2/
 results_mapillary/
 
 *.ipynb_checkpoints
-*.ipynb
+# *.ipynb
 
 # Ignore Jupyter notebooks
-*.ipynb
+# *.ipynb

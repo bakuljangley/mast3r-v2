@@ -328,7 +328,7 @@ def plot_depth_overlay_on_image(img, scene_map, pixel_uv, cmap='plasma', alpha=1
     # ax.set_xlim(0, img.shape[1])
     # ax.set_ylim(img.shape[0], 0)
     ax.axis('off')
-    # ax.set_title(title if title else 'Depth Overlay on Image')
+    ax.set_title(title if title else 'Depth Overlay on Image')
     plt.show()
 
 def plot_lidar_mast3r_matches(img, lidar_uv, matched_lidar_uv, inliers_im0, title="LiDAR: Matched vs Unmatched Projections"):

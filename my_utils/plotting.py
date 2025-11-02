@@ -1,6 +1,61 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from .transformations import pose_to_se3
+
+
+def show_image_pair(anchor_img, query_img, anchor_idx=None, query_idx=None, figsize=(12, 6), titles=None):
+    """
+    Display anchor and query images side by side.
+    """
+    plt.figure(figsize=figsize)
+    plt.subplot(1, 2, 1)
+    plt.imshow(anchor_img)
+    title = f'Anchor {anchor_idx}' if anchor_idx is not None else 'Anchor'
+    if titles and len(titles) > 1:
+        title = titles[1]
+    plt.title(title, fontsize=20)
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(query_img)
+    title = f'Query {query_idx}' if query_idx is not None else 'Query'
+    if titles and len(titles) > 0:
+        title = titles[0]
+    plt.title(title, fontsize=20)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+
+
+def plot_pointclouds_top_view(pointclouds, labels=None, colors=None, s=10, alpha=0.5, title=None, ax=None):
+    """
+    Plot multiple point clouds in top-down (X-Z) view.
+    pointclouds: list of (N,3) arrays
+    labels: list of strings
+    colors: list of colors
+    """
+    if not isinstance(pointclouds, list):
+        pointclouds = [pointclouds]
+    if labels is None:
+        labels = [f"Cloud {i}" for i in range(len(pointclouds))]
+    if colors is None:
+        colors = ['blue', 'orange', 'green', 'red', 'purple']
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+    for i, pts in enumerate(pointclouds):
+        if pts is not None and pts.size > 0:
+            ax.scatter(pts[:, 0], pts[:, 2], c=colors[i % len(colors)], s=s, marker='o', alpha=alpha, label=labels[i])
+    ax.set_xlabel('X (Right)')
+    ax.set_ylabel('Z (Forward)')
+    ax.set_title(title if title else 'Top-View of Point Clouds')
+    ax.axis('equal')
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
 def load_pose_results(filename):
     data = np.loadtxt(filename)
     return [row for row in data if len(row) == 9]
